@@ -62,21 +62,26 @@ The system is strictly read-only. A query validator checks every natural languag
 ```bash
 git clone https://github.com/flysas-tech/platform-cloudex.git
 cd platform-cloudex
+```
 
-# Backend
+**One-time setup — must be done before running `start-dev.sh`:**
+
+```bash
+# Create the Python virtual environment and install backend dependencies
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r backend/requirements.txt
-
-# Frontend
-cd frontend && npm install && cd ..
 ```
+
+> `start-dev.sh` expects `.venv` to already exist and will exit immediately if it doesn't.
+> Frontend `node_modules` are handled automatically by the script if missing.
 
 Copy and fill in the environment files:
 
 ```bash
 cp backend/.env.example backend/.env.local
 cp frontend/.env.example frontend/.env.local
+# Edit both files and fill in your Azure credentials
 ```
 
 Start both services:
