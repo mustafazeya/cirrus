@@ -1,0 +1,50 @@
+{
+  "name": "cloudex-portal-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@azure/msal-browser": "^3.5.0",
+    "@azure/msal-react": "^2.0.9",
+    "@headlessui/react": "^1.7.17",
+    "@heroicons/react": "^2.0.18",
+    "@kusto/monaco-kusto": "^14.1.0",
+    "@microsoft/applicationinsights-web": "^3.3.10",
+    "@monaco-editor/react": "^4.7.0",
+    "@tailwindcss/forms": "^0.5.7",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "axios": "^1.6.2",
+    "monaco-editor": "^0.52.2",
+    "next": "14.2.35",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.48.2",
+    "react-hot-toast": "^2.4.1",
+    "react-markdown": "^10.1.0",
+    "react-syntax-highlighter": "^16.1.0",
+    "recharts": "^2.8.0",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/node": "^20.10.4",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.18",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.55.0",
+    "eslint-config-next": "14.0.4",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.3.3"
+  },
+  "overrides": {
+    "glob": "^10.5.0"
+  }
+}

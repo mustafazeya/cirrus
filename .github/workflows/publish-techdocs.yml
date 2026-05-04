@@ -1,0 +1,49 @@
+name: Publish TechDocs Site
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+  workflow_dispatch:
+
+jobs:
+  publish-techdocs-site:
+    runs-on:
+      labels: sas-github-runner
+
+    env:
+      AZURE_BLOB_CONTAINER_NAME: ${{ secrets.CDX_TECHDOCS_BLOB_CONTAINER_NAME }}
+      AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.CDX_TECHDOCS_STORAGE_ACCOUNT_NAME }}
+      AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.CDX_TECHDOCS_STORAGE_ACCOUNT_KEY }}
+      ENTITY_NAMESPACE: 'default'
+      ENTITY_KIND: 'Component'
+      ENTITY_NAME: 'platform-cloudex'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install techdocs-cli
+        run: sudo npm install -g @techdocs/cli
+
+      - name: Install mkdocs and mkdocs plugins
+        run: python -m pip install mkdocs-techdocs-core==1.*
+
+      - name: Generate docs site
+        run: techdocs-cli generate --no-docker --verbose
+
+      - name: Publish docs site
+        run: techdocs-cli publish --publisher-type azureBlobStorage --storage-name $AZURE_BLOB_CONTAINER_NAME --azureAccountName $AZURE_STORAGE_ACCOUNT_NAME --azureAccountKey $AZURE_STORAGE_ACCOUNT_KEY --entity $ENTITY_NAMESPACE/$ENTITY_KIND/$ENTITY_NAME

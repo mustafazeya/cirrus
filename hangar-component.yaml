@@ -1,0 +1,54 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: platform-cloudex
+  title: CloudEx - Azure Multi-Subscription Portal
+  description: AI-powered Azure management platform with GPT-5 natural language queries, real-time cost analysis, and comprehensive resource monitoring
+  tags:
+    - azure
+    - ai
+    - multi-subscription
+    - cost-management
+    - fastapi
+    - nextjs
+  links:
+    - title: Production Portal
+      url: https://cloudex.flysas.tech
+      icon: web
+    - title: Ask the team
+      url: https://app.slack.com/client/T1C8F1TM2/C02QCKWBJ68
+      icon: chat
+  annotations:
+    github.com/project-slug: flysas-tech/platform-cloudex
+    backstage.io/techdocs-ref: dir:.
+spec:
+  type: service
+  lifecycle: production
+  owner: cdx-developers
+  system: cloud-platform
+  providesApis:
+    - cloudex-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: cloudex-api
+  title: CloudEx REST API
+  description: RESTful API for Azure multi-subscription management with AI-powered natural language queries
+  tags:
+    - rest
+    - openapi
+    - azure
+    - ai
+  links:
+    - title: Production API
+      url: https://cloudex-api.flysas.tech
+    - title: OpenAPI Schema
+      url: https://cloudex-api.flysas.tech/api/openapi.json
+spec:
+  type: openapi
+  lifecycle: production
+  owner: cdx-developers
+  system: cloud-platform
+  definition:
+    $text: https://cloudex-api.flysas.tech/api/openapi.json

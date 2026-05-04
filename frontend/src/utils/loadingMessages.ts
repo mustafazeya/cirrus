@@ -1,0 +1,1 @@
+// This file is no longer used.\n// Loading state is handled by the self-contained ThinkingBubble component\n// inside ChatMessage.tsx, which infers its phase label from elapsed time.\n// Kept to avoid breaking any build caches that may reference this path.\nexport {};\n

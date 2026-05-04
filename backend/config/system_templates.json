@@ -1,0 +1,345 @@
+[
+  {
+    "id": "cirrus-identity",
+    "name": "Who are you?",
+    "description": "Learn about CIRRUS identity and who created it",
+    "query_type": "natural_language",
+    "query": "who are you?",
+    "category": "custom",
+    "tags": [
+      "identity",
+      "about",
+      "cirrus"
+    ]
+  },
+  {
+    "id": "cirrus-capabilities",
+    "name": "What can you do?",
+    "description": "Discover CIRRUS capabilities and features",
+    "query_type": "natural_language",
+    "query": "what can you do?",
+    "category": "custom",
+    "tags": [
+      "capabilities",
+      "features",
+      "help"
+    ]
+  },
+  {
+    "id": "best-practices-container-apps",
+    "name": "Container Apps Best Practices",
+    "description": "Get best practices for Azure Container Apps",
+    "query_type": "natural_language",
+    "query": "give me best practices for azure container apps",
+    "category": "custom",
+    "tags": [
+      "best practices",
+      "container apps",
+      "guidance"
+    ]
+  },
+  {
+    "id": "best-practices-aks",
+    "name": "AKS Best Practices",
+    "description": "Get best practices for Azure Kubernetes Service",
+    "query_type": "natural_language",
+    "query": "give me best practices for azure kubernetes service",
+    "category": "custom",
+    "tags": [
+      "best practices",
+      "aks",
+      "kubernetes"
+    ]
+  },
+  {
+    "id": "best-practices-app-service",
+    "name": "App Service Best Practices",
+    "description": "Get best practices for Azure App Service",
+    "query_type": "natural_language",
+    "query": "give me best practices for azure app service",
+    "category": "custom",
+    "tags": [
+      "best practices",
+      "app service",
+      "guidance"
+    ]
+  },
+  {
+    "id": "cost-breakdown",
+    "name": "Cost Breakdown",
+    "description": "Show cost breakdown for the selected scope grouped by service",
+    "query_type": "cost_analysis",
+    "query": "show cost breakdown grouped by service",
+    "category": "cost",
+    "tags": [
+      "cost",
+      "breakdown"
+    ]
+  },
+  {
+    "id": "cost-trend",
+    "name": "Cost Trend",
+    "description": "Analyze cost trend over time for the selected scope",
+    "query_type": "cost_analysis",
+    "query": "show cost trend over time",
+    "category": "cost",
+    "tags": [
+      "cost",
+      "trend"
+    ]
+  },
+  {
+    "id": "cost-top-drivers",
+    "name": "Top Cost Drivers",
+    "description": "Identify top cost-driving resources in the selected scope",
+    "query_type": "cost_analysis",
+    "query": "show top cost driving resources",
+    "category": "cost",
+    "tags": [
+      "cost",
+      "top"
+    ]
+  },
+  {
+    "id": "azure-firewall-deny",
+    "name": "Azure Firewall Denied Traffic",
+    "description": "Analyze denied traffic in Azure Firewall logs",
+    "query_type": "kql",
+    "query": "show denied traffic in azure firewall logs",
+    "category": "security",
+    "tags": [
+      "azure firewall",
+      "deny"
+    ]
+  },
+  {
+    "id": "frontdoor-access-logs",
+    "name": "Front Door Access Logs",
+    "description": "Analyze Azure Front Door access logs",
+    "query_type": "kql",
+    "query": "show azure front door access logs",
+    "category": "logs",
+    "tags": [
+      "frontdoor",
+      "access",
+      "logs"
+    ]
+  },
+  {
+    "id": "frontdoor-waf-blocks",
+    "name": "Front Door WAF Blocks",
+    "description": "Analyze blocked requests by Front Door WAF",
+    "query_type": "kql",
+    "query": "show front door waf blocked requests by rule",
+    "category": "security",
+    "tags": [
+      "frontdoor",
+      "waf"
+    ]
+  },
+  {
+    "id": "frontdoor-http-errors",
+    "name": "Front Door HTTP Errors",
+    "description": "Analyze 403, 404, and 5xx responses in Front Door",
+    "query_type": "kql",
+    "query": "show front door http 403 404 and 5xx responses",
+    "category": "logs",
+    "tags": [
+      "frontdoor",
+      "http",
+      "errors"
+    ]
+  },
+  {
+    "id": "arg-unattached-nics",
+    "name": "Unattached Network Interfaces",
+    "description": "Find network interfaces not attached to any virtual machine",
+    "query_type": "resource_graph",
+    "query": "find unattached network interfaces",
+    "category": "resources",
+    "tags": [
+      "nic",
+      "unattached",
+      "arg"
+    ]
+  },
+  {
+    "id": "arg-unattached-disks",
+    "name": "Unattached Managed Disks",
+    "description": "Find managed disks not attached to any virtual machine",
+    "query_type": "resource_graph",
+    "query": "find unattached managed disks",
+    "category": "resources",
+    "tags": [
+      "disk",
+      "unattached",
+      "arg"
+    ]
+  },
+  {
+    "id": "arg-vm-public-ip",
+    "name": "VMs with Public IP",
+    "description": "Identify virtual machines with public IP exposure",
+    "query_type": "resource_graph",
+    "query": "find virtual machines with public ip",
+    "category": "security",
+    "tags": [
+      "vm",
+      "public ip",
+      "exposure"
+    ]
+  },
+  {
+    "id": "arg-appservice-public-endpoint",
+    "name": "App Services with Public Endpoint",
+    "description": "Identify App Services exposed via public endpoint",
+    "query_type": "resource_graph",
+    "query": "find app services with public endpoint",
+    "category": "security",
+    "tags": [
+      "app service",
+      "public endpoint",
+      "exposure"
+    ]
+  },
+  {
+    "id": "vm-high-utilization",
+    "name": "VM High Utilization",
+    "description": "Identify virtual machines with sustained high cpu or memory",
+    "query_type": "kql",
+    "query": "show virtual machines with high cpu or memory utilization",
+    "category": "performance",
+    "tags": [
+      "vm",
+      "cpu",
+      "memory"
+    ]
+  },
+  {
+    "id": "aks-failed-pods",
+    "name": "AKS Failed Pods",
+    "description": "Detect failing pods and crash loops in AKS",
+    "query_type": "kql",
+    "query": "show failing pods and crashloopbackoff in aks",
+    "category": "logs",
+    "tags": [
+      "aks",
+      "pods"
+    ]
+  },
+  {
+    "id": "appservice-http-errors",
+    "name": "App Service HTTP Errors",
+    "description": "Analyze 4xx and 5xx errors in App Service logs",
+    "query_type": "kql",
+    "query": "show app service http 4xx and 5xx errors",
+    "category": "logs",
+    "tags": [
+      "app service",
+      "http"
+    ]
+  },
+  {
+    "id": "functionapp-failures",
+    "name": "Function App Failures",
+    "description": "Analyze failed executions in Function Apps",
+    "query_type": "kql",
+    "query": "show function app execution failures",
+    "category": "logs",
+    "tags": [
+      "function app",
+      "failures"
+    ]
+  },
+  {
+    "id": "cosmos-ru-consumption",
+    "name": "Cosmos DB RU Consumption",
+    "description": "Analyze high RU consumption in Cosmos DB",
+    "query_type": "kql",
+    "query": "show high ru consumption in cosmos db",
+    "category": "performance",
+    "tags": [
+      "cosmosdb",
+      "ru"
+    ]
+  },
+  {
+    "id": "cosmos-throttling",
+    "name": "Cosmos DB Throttling",
+    "description": "Detect throttling events in Cosmos DB",
+    "query_type": "kql",
+    "query": "show throttling events in cosmos db logs",
+    "category": "performance",
+    "tags": [
+      "cosmosdb",
+      "throttling"
+    ]
+  },
+  {
+    "id": "postgres-high-cpu",
+    "name": "PostgreSQL High CPU",
+    "description": "Identify PostgreSQL servers with sustained high cpu",
+    "query_type": "kql",
+    "query": "show postgresql servers with high cpu usage",
+    "category": "performance",
+    "tags": [
+      "postgresql",
+      "cpu"
+    ]
+  },
+  {
+    "id": "arg-firewall-rules",
+    "name": "Azure Firewall Rules",
+    "description": "List all Azure Firewall rules with their rule collections and rule collection groups",
+    "query_type": "resource_graph",
+    "query": "Give me all Azure Firewall rules along with their rule collections and rule collection groups",
+    "category": "security",
+    "tags": [
+      "azure firewall",
+      "rules",
+      "arg"
+    ]
+  },
+  {
+    "id": "defender-secure-score",
+    "name": "Defender Secure Score",
+    "description": "Show Microsoft Defender for Cloud secure score and recommendations",
+    "query_type": "resource_graph",
+    "query": "show me defender secure score and recommendations",
+    "category": "security",
+    "tags": [
+      "defender",
+      "secure score",
+      "security",
+      "arg"
+    ]
+  },
+  {
+    "id": "policy-compliance",
+    "name": "Policy Compliance",
+    "description": "Show Azure Policy compliance status and non-compliant resources",
+    "query_type": "resource_graph",
+    "query": "show policy compliance status and non-compliant resources",
+    "category": "governance",
+    "tags": [
+      "policy",
+      "compliance",
+      "governance",
+      "arg"
+    ]
+  },
+  {
+    "id": "best-practices-analysis",
+    "name": "Best Practices Analysis",
+    "description": "Analyze all Azure resources for configuration best practices and highlight issues or improvements",
+    "query_type": "natural_language",
+    "query": "Analyze all my Azure resources for configuration best practices and highlight any issues or improvements",
+    "category": "governance",
+    "tags": [
+      "best practices",
+      "well-architected",
+      "configuration",
+      "recommendations"
+    ]
+  }
+]

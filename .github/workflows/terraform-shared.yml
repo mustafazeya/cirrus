@@ -1,0 +1,32 @@
+name: Terraform Shared Services
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        type: boolean
+        description: Should terraform apply also run?
+        required: false
+        default: false
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/environments/shared/**'
+      - 'terraform/modules/shared-ai-services/**'
+
+jobs:
+  deploy-shared:
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    uses: flysas-tech/cdx-reusable-workflows/.github/workflows/deploy-terraform.yml@v0.1.6
+    with:
+      name: "cloudex-shared"
+      environment: "requires_approval"
+      terraform_folder: terraform/environments/shared
+      apply: ${{ (github.ref == 'refs/heads/main') || (github.event.inputs.apply == 'true') }}
+    secrets:
+      AZURE_CLIENT_ID: "${{ secrets.CDX_ADMIN_CLIENT_ID }}"
+      AZURE_CLIENT_SECRET: "${{ secrets.CDX_ADMIN_CLIENT_SECRET }}"

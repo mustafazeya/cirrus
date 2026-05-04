@@ -1,0 +1,86 @@
+<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Gradient definitions -->
+  <defs>
+    <linearGradient id="cloudGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#000099;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#0000cc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3385ff;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="sparkleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff3b30;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#cc2f26;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Glow effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle with gradient -->
+  <circle cx="50" cy="50" r="48" fill="url(#cloudGradient)" opacity="0.15" />
+
+  <!-- Main cloud shape -->
+  <g filter="url(#glow)">
+    <path
+      d="M 35 55 
+         Q 30 55 30 50 
+         Q 30 42 38 40 
+         Q 40 32 48 32 
+         Q 56 32 58 40 
+         Q 66 42 66 50 
+         Q 66 55 61 55 
+         Z"
+      fill="url(#cloudGradient)"
+    />
+  </g>
+
+  <!-- AI Sparkle 1 - Top right -->
+  <g>
+    <path
+      d="M 68 35 L 70 37 L 72 35 L 70 33 Z"
+      fill="url(#sparkleGradient)"
+      opacity="0.9"
+    />
+    <circle cx="70" cy="35" r="1" fill="#ff3b30" />
+  </g>
+
+  <!-- AI Sparkle 2 - Left -->
+  <g>
+    <path
+      d="M 25 48 L 27 50 L 29 48 L 27 46 Z"
+      fill="url(#sparkleGradient)"
+      opacity="0.9"
+    />
+    <circle cx="27" cy="48" r="1" fill="#ff3b30" />
+  </g>
+
+  <!-- AI Sparkle 3 - Bottom -->
+  <g>
+    <path
+      d="M 55 62 L 57 64 L 59 62 L 57 60 Z"
+      fill="url(#sparkleGradient)"
+      opacity="0.9"
+    />
+    <circle cx="57" cy="62" r="1" fill="#ff3b30" />
+  </g>
+
+  <!-- Neural network dots in cloud (AI representation) -->
+  <circle cx="42" cy="45" r="1.5" fill="white" opacity="0.8" />
+  <circle cx="48" cy="47" r="1.5" fill="white" opacity="0.8" />
+  <circle cx="54" cy="45" r="1.5" fill="white" opacity="0.8" />
+  <circle cx="45" cy="52" r="1.5" fill="white" opacity="0.8" />
+  <circle cx="51" cy="52" r="1.5" fill="white" opacity="0.8" />
+
+  <!-- Connecting lines (neural network) -->
+  <line x1="42" y1="45" x2="48" y2="47" stroke="white" stroke-width="0.5" opacity="0.5" />
+  <line x1="48" y1="47" x2="54" y2="45" stroke="white" stroke-width="0.5" opacity="0.5" />
+  <line x1="42" y1="45" x2="45" y2="52" stroke="white" stroke-width="0.5" opacity="0.5" />
+  <line x1="48" y1="47" x2="45" y2="52" stroke="white" stroke-width="0.5" opacity="0.5" />
+  <line x1="48" y1="47" x2="51" y2="52" stroke="white" stroke-width="0.5" opacity="0.5" />
+  <line x1="54" y1="45" x2="51" y2="52" stroke="white" stroke-width="0.5" opacity="0.5" />
+</svg>
