@@ -407,7 +407,7 @@ class RootCauseAnalysisService:
         incident_summary: Optional[str] = None,
         user_info: Optional[Dict[str, Any]] = None,
     ) -> Optional[str]:
-        from services.ai_service import AIService
+        from services.kql_generation_service import AIService
         ai_svc = AIService()
         time_desc = (
             f"between {start_time.isoformat()} and {end_time.isoformat()}"
@@ -773,7 +773,7 @@ class RootCauseAnalysisService:
             if table_mode:
                 resource_context["log_mode"] = table_mode
 
-            from services.ai_service import AIService
+            from services.kql_generation_service import AIService
             ai_svc = AIService()
 
             logger.info(f" Generating KQL for RCA log evidence: {resource_type} (mode={table_mode})")
@@ -1843,7 +1843,7 @@ Fields:
                     target_rid = q.get("resource_id") or resource_id
                     followup_rows: List[Dict[str, Any]] = []
                     try:
-                        from services.ai_service import AIService as _AISvc
+                        from services.kql_generation_service import AIService as _AISvc
                         from services.diagnostic_settings_service import DiagnosticSettingsService as _DSSvc
                         _diag = await _DSSvc().get_log_mode_for_resource(target_rid, user_info) if target_rid else {}
                         _ws = (_diag.get("primary") or {}).get("workspace_id") if _diag.get("has_diagnostics") else None

@@ -266,7 +266,7 @@ class QueryService:
                     
                     # Attempt to regenerate with child resource guidance
                     try:
-                        from services.ai_service import AIService
+                        from services.kql_generation_service import AIService
                         ai_service = AIService()
                         
                         if ai_service.is_available():
@@ -340,7 +340,7 @@ class QueryService:
                 
                 # Try to regenerate the query using AI with error context
                 try:
-                    from services.ai_service import AIService
+                    from services.kql_generation_service import AIService
                     ai_service = AIService()
                     
                     if ai_service.is_available() and query.get("natural_language_query"):

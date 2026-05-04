@@ -833,7 +833,7 @@ class QueryTemplateService:
         Returns a QueryTemplate with AI-generated name, description, and query
         """
         try:
-            from services.ai_service import AIService
+            from services.kql_generation_service import AIService
             ai_service = AIService()
             
             if not ai_service.is_available():
@@ -933,7 +933,7 @@ User: "high cpu usage"
         Returns natural language variations and related terms for better matching
         """
         try:
-            from services.ai_service import AIService
+            from services.kql_generation_service import AIService
             ai_service = AIService()
             
             if not ai_service.is_available():

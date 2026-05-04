@@ -30,7 +30,7 @@ from config import settings
 from auth import AzureAuthHandler
 auth_handler = AzureAuthHandler()
 from services.resource_service import ResourceService
-from services.ai_service import AIService
+from services.kql_generation_service import AIService
 from services.cache_service import cache_service
 from services.ai_query_service import ai_query_service
 from services.dual_credential_service import dual_cred_service
@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI):
         
         # Initialize global AI service with distributed rate limiter
         global ai_service
-        from services.ai_service import AIService
+        from services.kql_generation_service import AIService
         ai_service = AIService()
         if ai_service.is_available():
             ai_service.set_rate_limiter(cache_service.redis_client)

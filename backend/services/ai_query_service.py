@@ -1657,7 +1657,7 @@ SCOPE RULES (non-negotiable):
                 kql_query = kql_query_from_ai
                 
                 # ALWAYS regenerate to extract hints from user query (table names, resource types, etc.)
-                from .ai_service import AIService
+                from .kql_generation_service import AIService
                 ai_service = AIService()
                 
                 # Get AI reasoning for context enrichment
@@ -2589,7 +2589,7 @@ SCOPE RULES (non-negotiable):
             else:
                 # Regenerate KQL using proper prompt engineering
                 if resource_context:
-                    from .ai_service import AIService
+                    from .kql_generation_service import AIService
                     ai_service = AIService()
                     
                     # Get AI reasoning for context enrichment
