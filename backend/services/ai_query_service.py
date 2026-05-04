@@ -1360,6 +1360,22 @@ SCOPE RULES (non-negotiable):
                 # Strip tenacity wrapper to expose the real error
                 if "RetryError" in err_msg and exc.__cause__:
                     err_msg = str(exc.__cause__)
+                # Add actionable hints for common ARG KQL errors so the AI can self-correct
+                if "Failed to resolve scalar expression named" in err_msg:
+                    import re as _re_err
+                    col_match = _re_err.search(r"named '(\w+)'", err_msg)
+                    col = col_match.group(1) if col_match else "column"
+                    err_msg += (
+                        f"\nFix: '{col}' is not available after 'summarize' unless listed in the 'by' clause. "
+                        f"Either add '{col}' to the 'by' clause (e.g. '| summarize count() by type, {col}') "
+                        f"or remove '{col}' from 'project'."
+                    )
+                elif "ParserFailure" in err_msg:
+                    err_msg += (
+                        "\nFix: KQL syntax error. Check for unclosed parentheses, invalid operator usage, "
+                        "incorrect string quoting, or using a column alias before it is defined. "
+                        "Rewrite the query with simpler, valid KQL."
+                    )
                 logger.error(f"Agentic query execution failed: {err_msg}")
                 return {"error": err_msg}
             if not result.get("success"):
@@ -1396,6 +1412,7 @@ SCOPE RULES (non-negotiable):
         tool_calls_made = 0
         max_tool_calls = settings.AI_MAX_TOOL_CALLS
         query_service_inst = QueryService()
+        final_content = None  # Set via break when AI finishes; None means loop exhausted
 
         while tool_calls_made < max_tool_calls:
             response = await self.openai_client.chat.completions.create(
@@ -1557,7 +1574,19 @@ SCOPE RULES (non-negotiable):
                     "content": result_str,
                 })
 
-        final_content = getattr(choice.message, "content", None) or "Analysis complete."
+        # If the loop exhausted its budget without the AI returning a final text response
+        # (i.e., the last response still had tool_calls), make one synthesis call without tools.
+        if final_content is None:
+            try:
+                synth_response = await self.openai_client.chat.completions.create(
+                    model=self.settings.OPENAI_DEPLOYMENT_NAME,
+                    messages=messages,
+                    max_completion_tokens=4000,
+                )
+                final_content = synth_response.choices[0].message.content or "Analysis complete."
+                logger.info("Agentic: synthesis after loop exhaustion complete")
+            except Exception:
+                final_content = "Analysis complete."
         logger.info(f"Agentic analysis complete: {tool_calls_made} tool calls")
 
         return {
