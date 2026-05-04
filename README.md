@@ -311,7 +311,6 @@ Pre-fetching, Caching → Service Principal Token
 | **Azure AI Search** | Documentation search index |
 | **Azure Key Vault** | Secure secret management |
 | **Application Insights** | Monitoring and telemetry |
-| **Terraform** | Infrastructure as Code |
 
 ### Azure Services Integrated
 
@@ -348,9 +347,9 @@ pip install -r backend/requirements.txt
 cd frontend && npm install && cd ..
 
 # Configure environment
-cp backend/.env.example backend/.env
+cp backend/.env.example backend/.env.local
 cp frontend/.env.example frontend/.env.local
-# Edit both .env files with your Azure credentials
+# Edit both files with your Azure credentials
 ```
 
 ### Run Locally
@@ -376,7 +375,7 @@ cp frontend/.env.example frontend/.env.local
   - Azure Portal → App Registrations → New Registration
   - Redirect URI: `http://localhost:3000` (add production URL later)
   - Enable ID tokens and Access tokens under Authentication
-  - Copy Application (client) ID for frontend .env
+  - Copy Application (client) ID for frontend `.env.local`
 
 - **Backend Service Principal**:
   ```bash
@@ -384,17 +383,17 @@ cp frontend/.env.example frontend/.env.local
     --role "Reader" \
     --scopes /subscriptions/<your-subscription-id>
   ```
-  - Copy appId, password, and tenant for backend .env
+  - Copy `appId`, `password`, and `tenant` into `backend/.env.local`
 
 **2. Configure Environment Variables:**
 
-**Backend (.env)** - Required:
-- `AZURE_TENANT_ID`, `AZURE_SERVICE_PRINCIPAL_CLIENT_ID/SECRET`
+**`backend/.env.local`** — Required:
+- `AZURE_TENANT_ID`, `AZURE_SERVICE_PRINCIPAL_CLIENT_ID/SECRET/TENANT_ID`
 - `OPENAI_API_BASE`, `OPENAI_API_KEY`, `OPENAI_DEPLOYMENT_NAME`
-- `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_KEY`
-- `REDIS_URL` 
+- `AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_KEY` (optional but improves query quality)
+- `CORS_ORIGINS=["http://localhost:3000"]`
 
-**Frontend (.env.local)** - Required:
+**`frontend/.env.local`** — Required:
 - `NEXT_PUBLIC_AZURE_CLIENT_ID`, `NEXT_PUBLIC_AZURE_TENANT_ID`
 - `NEXT_PUBLIC_API_URL=http://localhost:8000`
 

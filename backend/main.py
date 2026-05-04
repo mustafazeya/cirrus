@@ -2016,8 +2016,13 @@ async def get_user_workspaces(
 ):
     """Get Log Analytics workspaces accessible to the user"""
     try:
-        # TODO: Implement actual workspace discovery
-        workspaces = await ai_query_service._get_user_workspaces(current_user)
+        from services.query_service import QueryService
+        query_svc = QueryService()
+        subscription_ids = current_user.get("subscription_ids", [])
+        workspaces = await query_svc.discover_workspaces_for_query(
+            subscription_ids=subscription_ids,
+            user_info=current_user
+        )
         return {"workspaces": workspaces}
         
     except Exception as e:
@@ -2027,58 +2032,19 @@ async def get_user_workspaces(
             detail="Failed to get workspaces"
         )
 
-@app.get("/api/ai/openai/test")
-async def test_openai_connection():
-    """Test OpenAI connection and deployment"""
-    try:
-        # Use global ai_service instance
-        if ai_service is None or not ai_service.is_available():
-            return {
-                "openai_configured": False,
-                "message": "OpenAI service not configured"
-            }
-        
-        # Test a simple completion
-        response = await ai_service.client.chat.completions.create(
-            model=ai_service.deployment_name,
-            messages=[{"role": "user", "content": "Say 'Hello, Azure!' if you can respond."}],
-            max_completion_tokens=50
-        )
-        
-        return {
-            "openai_configured": True,
-            "deployment_name": ai_service.deployment_name,
-            "test_response": response.choices[0].message.content,
-            "message": "OpenAI connection successful"
-        }
-        
-    except Exception as e:
-        logger.error(f"OpenAI test failed: {e}")
-        return {
-            "openai_configured": False,
-            "message": "OpenAI connection failed"
-        }
-
 # Admin endpoints for monitoring prefetch status (requires admin authentication)
 @app.get("/api/admin/info")
 async def get_admin_info(admin_user: dict = Depends(get_admin_user)):
     """Get admin configuration info - useful for testing admin access"""
-    try:
-        admin_emails = settings.get_admin_emails()
-        user_email = admin_user.get('preferred_username') or admin_user.get('email') or admin_user.get('upn')
-        
-        return {
-            "admin_access": True,
-            "user_email": user_email,
-            "configured_admin_emails": admin_emails,
-            "total_admin_count": len(admin_emails),
-            "message": f"Admin access confirmed for {user_email}"
-        }
-    except Exception as e:
-        logger.error(f"Failed to get admin info: {e}")
-        return {
-            "admin_access": False
-        }
+    user_email = admin_user.get('preferred_username') or admin_user.get('email') or admin_user.get('upn')
+    user_roles = admin_user.get('roles', [])
+    return {
+        "admin_access": True,
+        "user_email": user_email,
+        "roles": user_roles,
+        "admin_role": settings.ADMIN_ROLE_NAME,
+        "message": f"Admin access confirmed for {user_email}"
+    }
 
 @app.get("/api/admin/prefetch/status")
 async def get_prefetch_status(admin_user: dict = Depends(get_admin_user)):

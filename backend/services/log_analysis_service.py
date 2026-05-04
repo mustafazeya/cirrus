@@ -32,7 +32,8 @@ class LogAnalysisService:
         if total <= max_sample_rows:
             sample = results
         else:
-            indices = [int(i * total / max_sample_rows) for i in range(max_sample_rows)]
+            # Evenly spaced indices that always include the first and last row
+            indices = [int(i * (total - 1) / (max_sample_rows - 1)) for i in range(max_sample_rows)]
             sample = [results[i] for i in indices]
 
         sample = self._remove_empty_columns(sample)
