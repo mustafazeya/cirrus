@@ -14,7 +14,7 @@ from auth import UserTokenCredential
 from services.cache_service import cache_service
 from services.advanced_cost_service import AdvancedCostService
 from services.dual_credential_service import dual_cred_service
-from services.graph_service import graph_service
+from services.ms_graph_service import graph_service
 from config import settings
 
 logger = logging.getLogger(__name__)
