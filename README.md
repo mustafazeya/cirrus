@@ -1,6 +1,6 @@
-# CloudEx
+# CIRRUS
 
-CloudEx is a read-only Azure management portal that lets you query, analyse, and troubleshoot resources across multiple subscriptions using natural language. It combines Azure APIs with a GPT-5.4 backend to translate questions into Resource Graph KQL, Log Analytics queries, cost breakdowns, and metric lookups — then surfaces the results in a conversational UI.
+CIRRUS is a read-only Azure management portal that lets you query, analyse, and troubleshoot resources across multiple subscriptions using natural language. It combines Azure APIs with a GPT-5.4 backend to translate questions into Resource Graph KQL, Log Analytics queries, cost breakdowns, and metric lookups — then surfaces the results in a conversational UI.
 
 ---
 
@@ -38,7 +38,7 @@ Browser (Next.js 14)
                 └── Background prefetch (APScheduler, 3.5h interval)
 ```
 
-Every Azure API call runs with the authenticated user's delegated token. The service principal is used only for background operations that cannot use a user token (firewall policy reads, MS Graph group resolution). Azure enforces RBAC at the API layer — CloudEx cannot exceed the user's actual permissions.
+Every Azure API call runs with the authenticated user's delegated token. The service principal is used only for background operations that cannot use a user token (firewall policy reads, MS Graph group resolution). Azure enforces RBAC at the API layer — CIRRUS cannot exceed the user's actual permissions.
 
 The system is strictly read-only. A query validator checks every natural language query and AI-generated action against an allowlist before any Azure call is made.
 

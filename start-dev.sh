@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# CloudEx Portal - Development Startup Script
+# CIRRUS Portal - Development Startup Script
 # Runs backend in foreground and frontend in background
 
 set -e  # Exit on error
@@ -13,7 +13,7 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  CloudEx Portal - Starting Development${NC}"
+echo -e "${BLUE}  CIRRUS Portal - Starting Development${NC}"
 echo -e "${BLUE}========================================${NC}\n"
 
 # Get the script directory
