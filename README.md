@@ -85,6 +85,16 @@ Start both services:
 ./start-dev.sh
 ```
 
+Or manually in two terminals:
+
+```bash
+# Terminal 1 — backend (must run from backend/ so .env.local is found)
+cd backend && ../.venv/bin/python -m uvicorn main:app --reload --port 8000
+
+# Terminal 2 — frontend
+cd frontend && npm run dev
+```
+
 Frontend runs on `http://localhost:3000`, backend on `http://localhost:8000`. API documentation is available at `http://localhost:8000/api/docs`.
 
 ---
@@ -109,7 +119,7 @@ The application uses three token scopes:
 
 ```bash
 az ad sp create-for-rbac \
-  --name "cloudex-sp" \
+  --name "cirrus-sp" \
   --role "Reader" \
   --scopes /subscriptions/<subscription-id>
 ```
@@ -161,56 +171,23 @@ Role names are configurable via `ADMIN_ROLE_NAME`, `ADVANCE_ROLE_NAME`, and `NET
 
 ```
 backend/
-  main.py                    # FastAPI app, all route definitions
-  config.py                  # All configuration via environment variables
-  auth.py                    # Token credential adapters for Azure SDK
-  services/
-    ai_query_service.py      # Chat orchestrator — intent classification, agentic loop
-    kql_generation_service.py# NL-to-KQL conversion, doc-grounded prompt construction
-    query_service.py         # Azure API executor — ARG, Log Analytics, Cost Mgmt
-    advanced_cost_service.py # Parallel multi-subscription cost analysis
-    cost_service.py          # Single-subscription cost executor (query pipeline)
-    firewall_service.py      # Firewall policy reads, rule analysis, overlap detection
-    root_cause_analysis_service.py  # Evidence collection and AI correlation
-    conversation_service.py  # Multi-turn conversation state (Redis-backed)
-    query_template_service.py# Template CRUD, semantic search, AI suggestions
-    governance_service.py    # Policy compliance, Secure Score
-    resource_health_service.py
-    metrics_service.py
-    change_analysis_service.py
-    audit_service.py         # Query audit log (Redis)
-    cache_service.py         # Redis cache wrapper
-    advanced_query_cache_service.py  # Semantic KQL cache (L1 memory + L2 Redis)
-    scheduler_service.py     # APScheduler — background data prefetch
-    user_rbac_service.py     # RBAC scope filtering per user
-    ms_graph_service.py      # Microsoft Graph — group name resolution
-  prompts/
-    kql_generation_prompts.py# System prompts for KQL generation
-  models/
-    conversation.py
-    query_template.py
-    saved_view.py
-  utils/
-    arg_table_mapper.py      # Resource type → ARG table mapping
-    log_analytics_table_mapper.py
-    timezone_utils.py        # CET timezone helpers
-  tests/                     # pytest unit tests
+  main.py          # FastAPI app and all route definitions
+  config.py        # All settings, sourced from .env.local
+  auth.py          # Azure SDK credential adapters
+  services/        # One file per domain (AI, cost, firewall, RCA, cache, …)
+  prompts/         # KQL generation system prompts
+  models/          # Pydantic models
+  utils/           # Pure helpers (table mapping, timezone)
+  tests/           # pytest unit tests
 
 frontend/
   src/
-    app/                     # Next.js app router pages
-      ai/                    # Conversational query interface
-      costs/                 # Cost management dashboard
-      firewall/              # Firewall analysis
-      dashboard/             # Overview / pinned cards
-      governance/            # Policy, health, security score (under platform/)
-      admin/                 # Admin panel
-    components/              # Shared React components
-    services/                # Axios API clients
-    store/                   # Zustand state stores
-    types/                   # TypeScript type definitions
-    config/
-      authConfig.ts          # MSAL configuration and API base URL
+    app/           # Next.js app router — one directory per product area
+    components/    # Shared React components
+    services/      # Typed Axios API clients
+    store/         # Zustand stores
+    types/         # TypeScript types
+    config/        # MSAL config and API base URL
 ```
 
 ---
