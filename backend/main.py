@@ -174,11 +174,11 @@ if APPINSIGHTS_AVAILABLE and settings.APPINSIGHTS_CONNECTION_STRING:
     try:
         configure_azure_monitor(
             connection_string=settings.APPINSIGHTS_CONNECTION_STRING,
-            service_name=f"cloudex-backend-{settings.ENVIRONMENT}",
-            service_namespace="cloudex",
-            service_instance_id=f"cloudex-backend-{settings.ENVIRONMENT}",
+            service_name=f"{settings.APPINSIGHTS_SERVICE_NAME}-backend-{settings.ENVIRONMENT}",
+            service_namespace=settings.APPINSIGHTS_SERVICE_NAME,
+            service_instance_id=f"{settings.APPINSIGHTS_SERVICE_NAME}-backend-{settings.ENVIRONMENT}",
         )
-        logger.info(f"Application Insights enabled (cloud_RoleName=cloudex-backend-{settings.ENVIRONMENT})")
+        logger.info(f"Application Insights enabled (cloud_RoleName={settings.APPINSIGHTS_SERVICE_NAME}-backend-{settings.ENVIRONMENT})")
     except Exception as e:
         logger.warning(f"Failed to initialize Application Insights: {e}")
 else:
@@ -186,7 +186,7 @@ else:
 
 # Initialize FastAPI app with lifespan
 app = FastAPI(
-    title="Cloudex AI Portal API",
+    title="CIRRUS API",
     version=settings.API_VERSION,
     docs_url=None,  # Disable Swagger UI in browser
     redoc_url=None,  # Disable ReDoc in browser

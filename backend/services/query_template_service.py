@@ -54,7 +54,7 @@ class QueryTemplateService:
         # Redis pub/sub for real-time sync across workers
         self._pubsub = None
         self._pubsub_task = None
-        self._pubsub_channel = "cloudex:templates:changes"
+        self._pubsub_channel = "cirrus:templates:changes"
         
         # Initialize with system templates
         self._initialize_system_templates()

@@ -59,6 +59,7 @@ class Settings(BaseSettings):
 
     # Application Insights
     APPINSIGHTS_CONNECTION_STRING: str = ""
+    APPINSIGHTS_SERVICE_NAME: str = "cloudex"
     
     # Redis Configuration (for caching) - Optional
     REDIS_URL: str = ""  # Empty means no Redis caching (format: redis://[:password]@host:port?ssl=true)
