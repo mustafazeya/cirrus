@@ -899,6 +899,7 @@ export default function ConversationView({
                 actions={message.actions}
                 onActionClick={handleActionClick}
                 onRerun={handleRerunQuery}
+                conversationId={conversationId ?? undefined}
               />
             ))}
             <div ref={messagesEndRef} />
@@ -950,8 +951,8 @@ export default function ConversationView({
             )}
           </button>
         </div>
-        <p className="mt-1 sm:mt-2 text-xs text-gray-500 px-1">
-          <span className="flex items-center gap-1.5"><svg className="w-3 h-3 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg><span className="hidden sm:inline">CIRRUS AI remembers conversation context, so ask follow-up questions naturally</span><span className="sm:hidden">Conversation context is retained</span></span>
+        <p className="mt-1 sm:mt-2 text-xs text-gray-400 px-1 text-center">
+          CIRRUS can make mistakes. Double-check important findings before acting on them.
         </p>
       </div>
 

@@ -7,9 +7,9 @@ import json
 import logging
 import re
 from typing import Dict, Any, List, Optional, Tuple
+from contextvars import ContextVar
 from datetime import datetime, timedelta
 from collections import Counter
-from openai import AsyncOpenAI
 from dataclasses import dataclass
 
 from config import settings
@@ -20,10 +20,17 @@ from .query_validator import query_validator
 
 logger = logging.getLogger(__name__)
 
+# Per-request state — isolated per asyncio task via ContextVar so concurrent requests
+# on this singleton cannot bleed scope into each other.
+_ctx_subscription_ids: ContextVar[Optional[list]] = ContextVar('_ctx_subscription_ids', default=None)
+_ctx_resource_group: ContextVar[Optional[str]] = ContextVar('_ctx_resource_group', default=None)
+_ctx_resource_id: ContextVar[Optional[str]] = ContextVar('_ctx_resource_id', default=None)
+_ctx_user_query: ContextVar[str] = ContextVar('_ctx_user_query', default='')
+_ctx_conversation_context: ContextVar[list] = ContextVar('_ctx_conversation_context', default=[])
+
 # Resource Graph Analysis Constants — sourced from config.py / settings
 from config import settings as _settings
 ARG_MAX_SAMPLE_SIZE = _settings.ARG_MAX_SAMPLE_SIZE
-ARG_SAMPLE_ENTRIES_COUNT = 5  # not currently used — intentionally kept local
 ARG_MAX_CONTEXT_LENGTH = _settings.ARG_MAX_CONTEXT_LENGTH
 ARG_REDUCED_AGGREGATION_COUNT = _settings.ARG_REDUCED_AGGREGATION_COUNT
 ARG_MAX_FIELD_LENGTH_FOR_AGGREGATION = _settings.ARG_MAX_FIELD_LENGTH
@@ -136,39 +143,58 @@ class AIQueryService:
     
     def __init__(self):
         self.settings = settings
-        self.openai_client = None
-        self._initialize_openai()
-        
-    def _initialize_openai(self):
-        """Initialize OpenAI client with proper timeout configuration"""
-        if self.settings.OPENAI_API_KEY:
-            # Configure timeouts for Azure OpenAI requests
-            # Connect: 10s for TCP connection, Read: 120s for complex queries
-            from httpx import Timeout
-            timeout_config = Timeout(connect=10.0, read=120.0, write=10.0, pool=10.0)
-            
-            if self.settings.OPENAI_API_BASE:
-                # Azure OpenAI - use base_url format
-                base_url = self.settings.OPENAI_API_BASE.rstrip('/') + '/openai/v1/'
-                self.openai_client = AsyncOpenAI(
-                    api_key=self.settings.OPENAI_API_KEY,
-                    base_url=base_url,
-                    timeout=timeout_config,
-                    max_retries=3
-                )
-                logger.info(f" Azure OpenAI client initialized with base URL: {base_url}")
-                logger.info(f" Deployment name: {self.settings.OPENAI_DEPLOYMENT_NAME}")
-            else:
-                # Standard OpenAI
-                self.openai_client = AsyncOpenAI(
-                    api_key=self.settings.OPENAI_API_KEY,
-                    timeout=timeout_config,
-                    max_retries=3
-                )
-                logger.info(" Standard OpenAI client initialized")
-        else:
+        from services.openai_client import get_openai_client
+        self.openai_client = get_openai_client()
+        if not self.openai_client:
             logger.warning("OpenAI API key not configured")
-    
+
+    # ── Per-request context properties ──────────────────────────────────────────
+    # Backed by module-level ContextVars. Each asyncio task (one per HTTP request)
+    # gets its own copy, so concurrent requests on this singleton are fully isolated.
+    # All existing self._current_* reads and writes work unchanged.
+
+    @property
+    def _current_subscription_ids(self) -> list:
+        return _ctx_subscription_ids.get() or []
+
+    @_current_subscription_ids.setter
+    def _current_subscription_ids(self, value: list) -> None:
+        _ctx_subscription_ids.set(value)
+
+    @property
+    def _current_resource_group(self) -> Optional[str]:
+        return _ctx_resource_group.get()
+
+    @_current_resource_group.setter
+    def _current_resource_group(self, value: Optional[str]) -> None:
+        _ctx_resource_group.set(value)
+
+    @property
+    def _current_resource_id(self) -> Optional[str]:
+        return _ctx_resource_id.get()
+
+    @_current_resource_id.setter
+    def _current_resource_id(self, value: Optional[str]) -> None:
+        _ctx_resource_id.set(value)
+
+    @property
+    def _current_user_query(self) -> str:
+        return _ctx_user_query.get()
+
+    @_current_user_query.setter
+    def _current_user_query(self, value: str) -> None:
+        _ctx_user_query.set(value)
+
+    @property
+    def _current_conversation_context(self) -> list:
+        return _ctx_conversation_context.get()
+
+    @_current_conversation_context.setter
+    def _current_conversation_context(self, value: list) -> None:
+        _ctx_conversation_context.set(value)
+
+    # ────────────────────────────────────────────────────────────────────────────
+
     async def process_natural_query(
         self,
         user_query: str,
@@ -642,14 +668,16 @@ Output: {
                 logger.info(f" Including {len(messages)-1} conversation messages for context")
             
             # Stash processed conversation for the agentic loop (last 6 turns is enough context)
-            self._current_conversation_context: list = messages[1:]  # strip system prompt
+            self._current_conversation_context = messages[1:]  # strip system prompt
 
             # Add current context (filters + current query) as the latest user message
             messages.append({"role": "user", "content": context})
 
-            # Scale output budget: large inputs (e.g. IP/CIDR lists) require more tokens
-            # to fit the full KQL in the JSON response without truncation.
-            classification_token_budget = 8000 if len(getattr(self, "_current_user_query", "")) > 3000 else 1000
+            # Scale output budget linearly with input size.
+            # Minimum 1000 tokens covers simple queries. Large inputs (IP/CIDR lists, long
+            # conversation histories) need proportionally more room so the JSON isn't truncated.
+            _query_len = len(self._current_user_query)
+            classification_token_budget = max(1000, min(_query_len // 3, 8000))
 
             response = await self.openai_client.chat.completions.create(
                 model=self.settings.OPENAI_DEPLOYMENT_NAME,
@@ -718,14 +746,7 @@ Output: {
             
         except Exception as e:
             logger.error(f"AI understanding failed: {e}", exc_info=True)
-            # For non-Azure queries, try general code generation
             return await self._handle_general_request(self._current_user_query, user_data)
-            
-            return {
-                "success": False,
-                "message": "I couldn't understand that. Can you rephrase?",
-                "suggestions": self._get_starter_suggestions()
-            }
     
     async def _execute_ai_decision(
         self,
@@ -894,12 +915,12 @@ Output: {
             return await self._execute_health_from_ai(ai_decision, user_data)
         
         elif action == "policy_compliance":
-            logger.info(" Routing policy compliance query to AI-generated Resource Graph query")
-            return await self._execute_resource_graph_from_ai(ai_decision, user_data)
+            logger.info(" Routing policy compliance query to dedicated governance service")
+            return await self._execute_policy_compliance_from_ai(ai_decision, user_data)
         
         elif action == "security_score":
-            logger.info(" Routing security score query to AI-generated Resource Graph query")
-            return await self._execute_resource_graph_from_ai(ai_decision, user_data)
+            logger.info(" Routing security score query to dedicated governance service")
+            return await self._execute_security_score_from_ai(ai_decision, user_data)
 
         elif action == "agentic_analysis":
             return await self._execute_agentic_analysis(ai_decision, user_data)
@@ -1043,10 +1064,6 @@ SCOPE RULES (non-negotiable):
                                 "items": {"type": "string"},
                                 "description": "Metric names to fetch (e.g. ['Percentage CPU', 'Network In Total']). Only for type=metrics."
                             },
-                            "time_range": {
-                                "type": "string",
-                                "description": "ISO 8601 duration for metrics window (e.g. PT1H, PT6H, PT24H, P7D). Only for type=metrics."
-                            },
                             "aggregation": {
                                 "type": "string",
                                 "description": "Aggregation type for metrics: Average, Maximum, Minimum, Total. Only for type=metrics."
@@ -1057,7 +1074,7 @@ SCOPE RULES (non-negotiable):
                             },
                             "time_range": {
                                 "type": "string",
-                                "description": "Billing time range for cost queries (e.g. BillingMonth, Last30Days, Last7Days) or ISO 8601 for metrics. Only for type=cost or type=metrics."
+                                "description": "Time range for the query. For type=metrics: ISO 8601 duration (e.g. PT1H, PT6H, PT24H, P7D). For type=cost: billing period (e.g. BillingMonth, Last30Days, Last7Days, Custom)."
                             }
                         },
                         "required": ["type"]
@@ -1689,41 +1706,9 @@ SCOPE RULES (non-negotiable):
                 from .kql_generation_service import AIService
                 ai_service = AIService()
                 
-                # Get AI reasoning for context enrichment
+                # Use the AI's own reasoning as context for the KQL generator.
+                # The router already encoded intent (best practices, specific resource, etc.) in reasoning.
                 ai_reasoning = ai_decision.get("reasoning", kql_query_from_ai)
-                
-                # SPECIAL HANDLING: Best Practices / Configuration Review queries
-                # Override AI reasoning to prevent Azure Search from finding PolicyResources examples
-                best_practices_keywords = [
-                    "best practice review", "configuration review",
-                    "well architected", "well-architected", "pillar review", "Architecture review", "services review", "analyze my resources", "detect misconfigurations"
-                ]
-                if any(keyword in original_user_query.lower() for keyword in best_practices_keywords):
-                    logger.info(" Detected best practices query - overriding reasoning to target Resources table")
-                    
-                    # Add filter hints and limit based on scope
-                    scope_filter_hint = ""
-                    kql_limit = settings.AI_KQL_ROW_LIMIT_DEFAULT  # Default for filtered scopes
-                    
-                    if resource_id:
-                        scope_filter_hint = f" Add filter: | where id =~ '{resource_id}'."
-                        logger.info(f" Best practices query scoped to specific resource: {resource_id}")
-                    elif resource_group:
-                        scope_filter_hint = f" Add filter: | where resourceGroup =~ '{resource_group}'."
-                        logger.info(f" Best practices query scoped to resource group: {resource_group}")
-                    else:
-                        # Subscription-wide: limit to 50 to get true count (will sample 10 for analysis)
-                        kql_limit = settings.AI_KQL_ROW_LIMIT_BROAD
-                        logger.info(f" Best practices query is subscription-wide - limiting to {kql_limit} resources (sample 10 for analysis)")
-                    
-                    ai_reasoning = (
-                        "Query the Resources table (NOT PolicyResources or policyresources) to get ALL resources. "
-                        f"Do NOT filter by type - include ALL resource types using: Resources | project name, type, location, resourceGroup, sku, properties, tags | limit {kql_limit}. "
-                        f"{scope_filter_hint}"
-                        "This allows analysis of any resource in the subscription (VMs, databases, storage, networking, containers, etc.). "
-                        "Include configuration properties: sku.name, sku.tier, properties (whole object for flexibility), tags. "
-                        "The AI will analyze the results and identify best practice violations across all resource types."
-                    )
                 
                 # Use Resource Graph KQL generation with full prompt engineering
                 # Pass BOTH original query and AI reasoning (same pattern as Log Analytics)
@@ -1835,13 +1820,13 @@ SCOPE RULES (non-negotiable):
                     False
                 )
                 
-                # Generate AI analysis of the resource graph results
+                # Generate AI analysis of the resource graph results.
+                # Route to WAF-style analysis if the AI's own reasoning signals a best-practices
+                # intent — no user-query keyword matching needed.
                 original_user_query = getattr(self, '_current_user_query', '')
-                waf_intent_phrases = ["best practice", "well-architected", "configuration review", "security review", "compliance review", "posture"]
-                data_intent_phrases = ["overlap", "duplicate", "identify", "find", "list", "show", "compare", "which", "count", "how many", "top"]
-                is_best_practices_query = (
-                    any(p in original_user_query.lower() for p in waf_intent_phrases)
-                    and not any(p in original_user_query.lower() for p in data_intent_phrases)
+                is_best_practices_query = any(
+                    p in ai_reasoning.lower()
+                    for p in ("best practice", "well-architected", "well architected", "configuration review")
                 )
 
                 if is_best_practices_query and result.get("results"):
@@ -3253,6 +3238,57 @@ SCOPE RULES (non-negotiable):
             logger.error(f"Policy compliance query failed: {e}", exc_info=True)
             msg = await self._ai_explain_error(str(e), context="Azure Policy compliance query")
             return {"success": False, "message": msg, "suggestions": ["Check Azure Policy permissions", "Try security score instead", "View resource health"]}
+
+    async def _execute_security_score_from_ai(
+        self,
+        ai_decision: Dict[str, Any],
+        user_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute Defender for Cloud security score via the governance service (same path as agentic)."""
+        try:
+            from .query_service import QueryService
+            query_service = QueryService()
+
+            subscription_ids = self._current_subscription_ids
+
+            if not subscription_ids:
+                return {
+                    "success": False,
+                    "message": "Please select a subscription to check the security score.",
+                    "suggestions": ["Select a subscription first", "Check policy compliance", "View resource health"]
+                }
+
+            logger.info(f" Executing security score for {len(subscription_ids)} subscription(s)")
+
+            result = await query_service.execute_query(
+                {"type": "security_score"},
+                subscription_ids,
+                user_data
+            )
+
+            if not result.get("success"):
+                err = result.get("message") or "Failed to retrieve security score"
+                msg = await self._ai_explain_error(err, context="Microsoft Defender for Cloud security score")
+                return {"success": False, "message": msg, "suggestions": ["Check Defender for Cloud permissions", "View policy compliance", "View resource health"]}
+
+            suggestions = ai_decision.get("suggestions") or [
+                "View security recommendations",
+                "Check policy compliance",
+                "Show unhealthy resources"
+            ]
+
+            return {
+                "success": True,
+                "message": result.get("message", ""),
+                "data": result.get("data"),
+                "query_type": "security_score",
+                "suggestions": suggestions
+            }
+
+        except Exception as e:
+            logger.error(f"Security score query failed: {e}", exc_info=True)
+            msg = await self._ai_explain_error(str(e), context="Microsoft Defender for Cloud security score")
+            return {"success": False, "message": msg, "suggestions": ["Check Defender permissions", "Try policy compliance instead", "View resource health"]}
     
     async def _ai_explain_policy_compliance(self, compliance_data: Dict[str, Any]) -> Optional[str]:
         """Let AI explain policy compliance results in natural language (NO hardcoded thresholds)"""

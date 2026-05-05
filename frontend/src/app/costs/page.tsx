@@ -767,8 +767,8 @@ export default function CostsPage() {
       <div className="mb-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Cost Analysis</h1>
-            <p className="mt-2 text-slate-500 text-sm">
+            <h1 className="text-[22px] font-bold text-slate-900 tracking-tight">Cost Analysis</h1>
+            <p className="mt-1 text-[13px] text-slate-500">
               Comprehensive cost breakdown and trend analysis across your Azure subscriptions
             </p>
           </div>
@@ -783,7 +783,7 @@ export default function CostsPage() {
               <button
                 onClick={() => setSaveViewDialogOpen(true)}
                 disabled={selectedSubscriptions.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-[12.5px] font-semibold"
                 title="Save current filters as a view"
               >
                 <BookmarkIcon className="h-4 w-4" />
@@ -794,7 +794,7 @@ export default function CostsPage() {
               <button
                 onClick={fetchCosts}
                 disabled={loading || selectedSubscriptions.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[12.5px] font-medium"
               >
                 <svg
                   className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
@@ -902,7 +902,7 @@ export default function CostsPage() {
               <select
                 value={dateRange}
                 onChange={(e) => handleDateRangeChange(e.target.value as any)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-base sm:text-sm"
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
               >
                 <option value="this_month">This Month</option>
                 <option value="last_month">Last Month</option>
@@ -923,7 +923,7 @@ export default function CostsPage() {
               <select
                 value={groupBy}
                 onChange={(e) => handleGroupByChange(e.target.value as any)}
-                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-base sm:text-sm"
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
               >
                 <option value="ServiceName">Service</option>
                 <option value="Location">Location</option>
@@ -944,7 +944,7 @@ export default function CostsPage() {
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-base sm:text-sm"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
                 />
               </div>
               <div className="flex flex-col gap-1">
@@ -955,7 +955,7 @@ export default function CostsPage() {
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-base sm:text-sm"
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white text-sm"
                 />
               </div>
             </div>
@@ -1141,7 +1141,7 @@ export default function CostsPage() {
         {/* Loading State */}
         {loading && selectedSubscriptions.length > 0 && (
           <div className="bg-white rounded-lg shadow p-12 text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mx-auto mb-4"></div>
+            <div className="animate-spin rounded-full h-16 w-16 border-2 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
             <p className="text-slate-500">Loading cost data...</p>
           </div>
         )}
@@ -1152,7 +1152,7 @@ export default function CostsPage() {
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               {/* Total Cost Card */}
-              <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-md transition-shadow">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-sm transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Cost</h3>
                   <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -1183,7 +1183,7 @@ export default function CostsPage() {
               </div>
 
               {/* Amortized Cost Card */}
-              <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-md transition-shadow">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-sm transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Amortized Cost</h3>
                   <div className="w-10 h-10 bg-amber-50 rounded-lg flex items-center justify-center">
@@ -1199,7 +1199,7 @@ export default function CostsPage() {
               </div>
 
               {/* Average Cost Card */}
-              <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-md transition-shadow">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-sm transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Avg per Subscription</h3>
                   <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
@@ -1215,7 +1215,7 @@ export default function CostsPage() {
               </div>
 
               {/* Services Count */}
-              <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-md transition-shadow">
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-sm transition-shadow">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     {groupBy === 'ServiceName' ? 'Services' : groupBy === 'Location' ? 'Locations' : groupBy === 'ResourceId' ? 'Resources' : 'Resource Groups'}
@@ -1240,7 +1240,7 @@ export default function CostsPage() {
 
             {/* Budget Overview Section */}
             {budgetData?.success && budgetData.budgets.length > 0 && (
-              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl border border-slate-200 shadow-sm p-6 border border-purple-100">
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl border border-purple-100 shadow-sm p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
                     <CurrencyDollarIcon className="h-6 w-6 text-purple-600" />
@@ -1381,7 +1381,7 @@ export default function CostsPage() {
 
             {/* Reservation & Savings Plans Analysis */}
             {reservationData && reservationData.reservation_savings !== 0 && (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 border border-slate-100">
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                 <div className="flex items-center gap-2 mb-4">
                   <div className={`p-2 rounded-lg ${
                     reservationData.reservation_savings > 0 ? 'bg-green-50' : 'bg-sas-red-50'
@@ -1572,7 +1572,7 @@ export default function CostsPage() {
                     placeholder={`Search ${groupBy === 'ServiceName' ? 'services' : groupBy === 'Location' ? 'locations' : groupBy === 'ResourceId' ? 'resources' : 'resource groups'}...`}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
                 <div className="mt-2 flex items-center justify-between text-sm text-slate-500">

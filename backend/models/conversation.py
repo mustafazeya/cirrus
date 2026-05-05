@@ -37,6 +37,10 @@ class ConversationMessage(BaseModel):
     actions: Optional[List[Dict[str, str]]] = None  # Quick action buttons
     metadata: Optional[Dict[str, Any]] = None  # Additional metadata (query_type, resource_type, etc.)
 
+    # User feedback — set via POST /api/ai/feedback after a response is shown
+    feedback: Optional[str] = None          # "positive" | "negative"
+    correction: Optional[str] = None        # Free-text correction provided by the user
+
 class ConversationContext(BaseModel):
     """Context maintained across conversation turns"""
     last_query_type: Optional[str] = None  # resource_graph, log_analytics, metrics, cost_analysis

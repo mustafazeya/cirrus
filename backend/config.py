@@ -87,7 +87,7 @@ class Settings(BaseSettings):
 
     # ── AI / OpenAI client ───────────────────────────────────────────────────
     OPENAI_CONNECT_TIMEOUT: float = 10.0     # TCP connect timeout (seconds)
-    OPENAI_READ_TIMEOUT: float = 90.0        # response stream timeout (seconds)
+    OPENAI_READ_TIMEOUT: float = 120.0       # response stream timeout (seconds) — 120s for agentic loop
     OPENAI_WRITE_TIMEOUT: float = 10.0       # request send timeout (seconds)
     OPENAI_POOL_TIMEOUT: float = 10.0        # connection-pool checkout timeout (seconds)
     OPENAI_MAX_CONCURRENT: int = 50          # distributed rate-limiter concurrency cap

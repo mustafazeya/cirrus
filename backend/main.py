@@ -1242,6 +1242,22 @@ async def process_ai_query(
         # This ensures we have enough context for the AI to understand conversation flow
         recent_messages = await conversation_service.get_recent_messages(conversation.id, count=20, user_id=user_id)
         
+        # Pre-compute feedback signals once before building conversation history.
+        #
+        # Negative corrections: only the most recent one is injected — older corrections
+        # are stale context that can confuse the model about the current query.
+        # Positive signals: collapsed into one system note if any of the last 3 turns (6
+        # messages) were rated helpful — prevents noisy per-message reinforcement.
+        _last_neg_correction_id: str | None = None
+        for _m in recent_messages:
+            if _m.role == "assistant" and _m.feedback == "negative" and _m.correction:
+                _last_neg_correction_id = _m.id  # overwrite each time — last one wins
+
+        _has_recent_positive = any(
+            m.role == "assistant" and m.feedback == "positive"
+            for m in recent_messages[-6:]
+        )
+
         # Format conversation history for AI
         conversation_history = []
         for msg in recent_messages:
@@ -1253,7 +1269,7 @@ async def process_ai_query(
             # Add resource_type if available (helps maintain context for follow-ups)
             if msg.metadata and msg.metadata.get("resource_type"):
                 msg_data["resource_type"] = msg.metadata.get("resource_type")
-            
+
             # CRITICAL: Include suggestions so AI remembers what it recommended
             # This allows AI to understand follow-up queries like "Quick scan" after suggesting it
             if msg.suggestions:
@@ -1266,6 +1282,30 @@ async def process_ai_query(
                 msg_data["query_result"] = msg.query_result
 
             conversation_history.append(msg_data)
+
+            # Inject the most recent negative correction inline (positioned right after the
+            # problematic response for context). All older corrections are skipped.
+            if (
+                msg.role == "assistant"
+                and msg.feedback == "negative"
+                and msg.correction
+                and msg.id == _last_neg_correction_id
+            ):
+                conversation_history.append({
+                    "role": "system",
+                    "content": (
+                        f"User marked the previous response as incorrect and provided a correction: "
+                        f'"{msg.correction}". Treat this as ground truth and adjust your next answer accordingly.'
+                    ),
+                })
+
+        # Positive reinforcement — injected once at the end so it influences the next response
+        # without inflating the context window.
+        if _has_recent_positive:
+            conversation_history.append({
+                "role": "system",
+                "content": "A recent response was marked as helpful by the user. Maintain the same depth, format, and approach.",
+            })
         
         # Extract filters from request context
         request_context = request_body.get("context", {})
@@ -1506,6 +1546,50 @@ async def get_conversation_history(
 # ============================================================================
 # Query Template Endpoints
 # ============================================================================
+
+@app.post("/api/ai/feedback", tags=["AI Assistant"])
+async def submit_message_feedback(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Record thumbs-up / thumbs-down feedback on a specific AI message.
+    An optional correction text is injected as a system signal on the next turn.
+
+    Body:
+        conversation_id: str
+        message_id: str
+        feedback: "positive" | "negative"
+        correction: str (optional — free-text the user wants AI to act on)
+    """
+    try:
+        body = await request.json()
+        conversation_id = body.get("conversation_id")
+        message_id = body.get("message_id")
+        feedback = body.get("feedback")
+        correction = body.get("correction") or None
+
+        if not conversation_id or not message_id or feedback not in ("positive", "negative"):
+            raise HTTPException(status_code=400, detail="conversation_id, message_id, and feedback ('positive'|'negative') are required")
+
+        user_id = current_user.get("sub") or current_user.get("oid") or current_user.get("email", "unknown")
+
+        stored = await conversation_service.store_feedback(
+            conversation_id=conversation_id,
+            message_id=message_id,
+            user_id=user_id,
+            feedback=feedback,
+            correction=correction,
+        )
+        if not stored:
+            raise HTTPException(status_code=404, detail="Conversation or message not found")
+
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to store feedback: {e}")
+        raise HTTPException(status_code=500, detail="Failed to store feedback")
 
 @app.get("/api/templates", tags=["Query Templates"])
 async def get_user_templates(
