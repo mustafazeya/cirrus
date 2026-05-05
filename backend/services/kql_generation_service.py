@@ -63,55 +63,16 @@ class DateTimeEncoder(json.JSONEncoder):
 
 class AIService:
     """Service for AI-powered query processing and result explanation"""
-    
-    # Keywords that identify on-prem firewall queries (not Azure Firewall)
-    ON_PREM_FIREWALL_KEYWORDS = [
-        "on-prem firewall",
-        "on-premise firewall",
-        "on premise firewall",
-        "cisco firewall",
-        "checkpoint firewall",
-    ]
-    
+
     def __init__(self):
         # Check if OpenAI is configured
-        if not settings.OPENAI_API_KEY or not settings.OPENAI_API_BASE:
+        from services.openai_client import get_openai_client
+        self.client = get_openai_client()
+        if not self.client:
             logger.warning("OpenAI is not configured. AI features will be disabled.")
-            self.client = None
-            self._rate_limiter = None
-        else:
-            # Azure OpenAI client configuration with timeouts for 2min total query limit
-            # Connect timeout: 10s (establish TCP connection)
-            # Read timeout: 90s (match overall timeout to prevent premature httpx timeouts)
-            # Write timeout: 10s (send request)
-            # Max retries: 0 (disabled to avoid exponential backoff delays)
-            from httpx import Timeout
-            import httpx
-            
-            # Custom httpx client with no retry to avoid exponential backoff delays
-            http_client = httpx.AsyncClient(
-                timeout=Timeout(
-                    connect=settings.OPENAI_CONNECT_TIMEOUT,
-                    read=settings.OPENAI_READ_TIMEOUT,
-                    write=settings.OPENAI_WRITE_TIMEOUT,
-                    pool=settings.OPENAI_POOL_TIMEOUT,
-                ),
-                limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
-            )
-            
-            self.client = openai.AsyncAzureOpenAI(
-                api_key=settings.OPENAI_API_KEY,
-                azure_endpoint=settings.OPENAI_API_BASE,
-                api_version=settings.OPENAI_API_VERSION,
-                http_client=http_client,
-                max_retries=0,  # Disable retry to avoid exponential backoff delays
-                timeout=90.0  # 90 second timeout for complex queries (KQL extraction, analysis)
-            )
-            
-            # Initialize distributed rate limiter
-            # NOTE: Rate limiter must be set via set_rate_limiter() after Redis is initialized
-            # If not set, calls will use _NoOpContext() (no rate limiting - backward compatible)
-            self._rate_limiter = None
+        # Rate limiter set via set_rate_limiter() after Redis is initialized.
+        # Until then, calls use _NoOpContext() (no rate limiting — backward compatible).
+        self._rate_limiter = None
         
         self.deployment_name = settings.OPENAI_DEPLOYMENT_NAME
         self.api_version = settings.OPENAI_API_VERSION
@@ -711,43 +672,6 @@ KEY RULES FROM AZURE RESOURCE GRAPH DOCUMENTATION:
             logger.error(f"Failed to generate cost query: {type(e).__name__}")
             return {}
     
-    async def _infer_resource_type_from_query(self, query: str) -> str:
-        """
-        Infer Azure resource type from natural language query
-        """
-        query_lower = query.lower()
-        
-        # Check for on-prem firewall keywords first (should NOT infer Azure Firewall)
-        for keyword in self.ON_PREM_FIREWALL_KEYWORDS:
-            if keyword in query_lower:
-                logger.info(f" Detected on-prem firewall keyword '{keyword}' - NOT inferring Azure Firewall resource type")
-                return None
-        
-        # Map keywords to resource types
-        resource_type_mappings = {
-            "azure firewall": "Microsoft.Network/azureFirewalls",  # Only match explicit "Azure Firewall"
-            "vm": "Microsoft.Compute/virtualMachines",
-            "virtual machine": "Microsoft.Compute/virtualMachines",
-            "storage": "Microsoft.Storage/storageAccounts",
-            "sql": "Microsoft.Sql/servers",
-            "database": "Microsoft.Sql/servers",
-            "aks": "Microsoft.ContainerService/managedClusters",
-            "kubernetes": "Microsoft.ContainerService/managedClusters",
-            "app service": "Microsoft.Web/sites",
-            "webapp": "Microsoft.Web/sites",
-            "function": "Microsoft.Web/sites",
-            "load balancer": "Microsoft.Network/loadBalancers",
-            "application gateway": "Microsoft.Network/applicationGateways",
-            "network security group": "Microsoft.Network/networkSecurityGroups",
-            "nsg": "Microsoft.Network/networkSecurityGroups",
-        }
-        
-        for keyword, resource_type in resource_type_mappings.items():
-            if keyword in query_lower:
-                return resource_type
-        
-        return None
-    
     async def _get_diagnostic_settings_context(self, resource_context: Dict[str, Any] = None, user_info: Dict[str, Any] = None) -> str:
         """
         Check diagnostic settings for the resource to determine log table mode.
@@ -994,47 +918,6 @@ Example: AZFWNetworkRule,AZFWApplicationRule"""
             resource_context: Full resource context including kind, sku, etc.
         """
         try:
-            # Special case: On-prem firewall queries (detected by keywords)
-            if user_query:
-                query_lower = user_query.lower()
-                is_on_prem_firewall = any(keyword in query_lower for keyword in self.ON_PREM_FIREWALL_KEYWORDS)
-                
-                if is_on_prem_firewall:
-                    logger.info(" On-prem firewall query detected - providing CommonSecurityLog guidance")
-                    return """
-📚 COMMONSECURITYLOG TABLE REFERENCE:
-
-Table: CommonSecurityLog
-Format: CEF (Common Event Format) for security appliances
-
-Common Fields:
-- DeviceVendor: "Zscaler", "Cisco", "Check Point" (case-sensitive)
-- DeviceProduct: Specific firewall model/product name
-- Activity: Action taken (Allow, Deny, Drop, Block, Accept, Reject)
-- SourceIP: Source IP address
-- DestinationIP: Destination IP address  
-- DestinationPort: Destination port number
-- Protocol: Network protocol (TCP, UDP, ICMP)
-- SourcePort: Source port number
-- DeviceAction: Firewall action taken
-- ApplicationProtocol: Application-level protocol
-- TimeGenerated: Log timestamp
-
-Example Query:
-CommonSecurityLog
-| where TimeGenerated > ago(1h)
-| where DeviceVendor in~ ("Zscaler", "Cisco", "Check Point")
-| where DestinationIP == "10.0.0.1"
-| where Activity has_any ("Deny", "Drop", "Block")
-| project TimeGenerated, DeviceVendor, SourceIP, DestinationIP, DestinationPort, Activity, Protocol
-| take 1000
-
-⚠️ CRITICAL REQUIREMENTS:
-1. Use EXACT field names: DestinationIP (NOT DestinationAddress), SourceIP, DestinationPort
-2. MUST end query with: | take 1000 or | limit 1000
-3. ALWAYS include time filter: | where TimeGenerated > ago(...)
-"""
-            
             if not resource_type:
                 logger.warning(" No resource_type provided to _get_microsoft_kql_examples")
                 return ""
@@ -1042,35 +925,13 @@ CommonSecurityLog
             # NEW: Try getting schema directly from table mapper first (faster, more reliable)
             table_schema_context = await self._get_table_schema_context(resource_context)
             
-            # ADDITIONAL: Search for KQL function/operator documentation if query needs it
-            # This prevents AI from hallucinating functions like "ipv4_isprivate()"
+            # Fetch KQL operator docs using the user's query as context — let search semantics
+            # decide relevance instead of keyword matching. Returns "" when search is unavailable.
             function_guidance = ""
             if user_query:
-                query_lower = user_query.lower()
-                # Detect if query needs function guidance (IP operations, parsing, aggregations, etc.)
-                needs_function_docs = any([
-                    "ip" in query_lower and ("private" in query_lower or "public" in query_lower or "range" in query_lower),
-                    "parse" in query_lower or "extract" in query_lower,
-                    "regex" in query_lower or "pattern" in query_lower,
-                    "aggregate" in query_lower or "count" in query_lower or "sum" in query_lower
-                ])
-                
-                if needs_function_docs:
-                    logger.info(f" Query may need KQL functions - searching documentation for guidance")
-                    # Build search context based on query intent
-                    search_context = "KQL functions operators"
-                    if "ip" in query_lower:
-                        search_context += " IP address ipv4 ipv6"
-                    if "private" in query_lower or "public" in query_lower:
-                        search_context += " private network RFC1918"
-                    if "parse" in query_lower:
-                        search_context += " string parsing"
-                    if "regex" in query_lower:
-                        search_context += " regex pattern matching"
-                    
-                    function_guidance = await self._get_kql_operator_documentation(search_context)
-                    if function_guidance:
-                        logger.info(f" Added KQL function guidance ({len(function_guidance)} chars)")
+                function_guidance = await self._get_kql_operator_documentation(user_query)
+                if function_guidance:
+                    logger.info(f" Added KQL function guidance ({len(function_guidance)} chars)")
             
             if table_schema_context:
                 logger.info(" Using direct table schema lookup")
@@ -1597,72 +1458,54 @@ Generate your query using ONLY the names from the documentation above.\n\n"""
     def _extract_resource_graph_hints(self, natural_query: str) -> str:
         """
         Extract Resource Graph query hints from natural language.
-        Detects locations, tags, quoted values, and filter constraints.
-        
-        Note: Table and resource type detection is handled by live documentation system.
+        Detects tags, quoted values, and filter constraints.
+
+        Note: Table, resource type, and location detection is handled by the AI
+        from its training knowledge and live documentation system.
         """
         import re
-        
+
         hints = {}
         query_lower = natural_query.lower()
-        
-        # 1. Extract Azure locations
-        azure_locations = [
-            'eastus', 'eastus2', 'westus', 'westus2', 'westus3', 'centralus', 'northcentralus', 'southcentralus',
-            'westcentralus', 'northeurope', 'westeurope', 'uksouth', 'ukwest', 'francecentral', 'francesouth',
-            'germanywestcentral', 'switzerlandnorth', 'norwayeast', 'swedencentral', 'eastasia', 'southeastasia',
-            'japaneast', 'japanwest', 'australiaeast', 'australiasoutheast', 'brazilsouth', 'canadacentral',
-            'canadaeast', 'southafricanorth', 'uaenorth', 'centralindia', 'southindia', 'koreacentral'
-        ]
-        
-        detected_locations = [loc for loc in azure_locations if loc in query_lower]
-        if detected_locations:
-            hints['locations'] = detected_locations
-        
-        # 2. Extract quoted strings (resource names, values)
+
+        # 1. Extract quoted strings (resource names, explicit values)
         quoted = re.findall(r"[\"'][^\"'\n]+[\"']", natural_query)
         if quoted:
-            hints['quoted_values'] = [q.strip('"\'\'') for q in quoted]
-        
-        # 3. Detect tag filters
+            hints['quoted_values'] = [q.strip('"\'') for q in quoted]
+
+        # 2. Detect tag filters
         tag_pattern = r'tag[s]?\s*[=:]\s*(["\']?[\w-]+["\']?)'
         tags = re.findall(tag_pattern, query_lower)
         if tags:
             hints['tags'] = [t.strip('"\'') for t in tags]
-        
-        # 6. Extract resource group hints
+
+        # 3. Extract resource group hints
         rg_pattern = r'resource\s*group[s]?\s*[=:]\s*(["\']?[\w-]+["\']?)'
         rgs = re.findall(rg_pattern, query_lower)
         if rgs:
             hints['resource_groups'] = [rg.strip('"\'') for rg in rgs]
-        
+
         if not hints:
             return ""
-        
-        # Build hint string
+
         hint_str = "\n\n🎯 USER SPECIFIED CONSTRAINTS (HARD REQUIREMENTS):\n"
-        
-        if 'locations' in hints:
-            locations_list = ', '.join([f"'{loc}'" for loc in hints['locations']])
-            hint_str += f"\n📍 LOCATIONS: {', '.join(hints['locations'])}\n"
-            hint_str += f"   Filter: | where location in~ ({locations_list})\n"
-        
+
         if 'quoted_values' in hints:
             hint_str += f"\n📝 FILTER VALUES: {', '.join(hints['quoted_values'])}\n"
             hint_str += "   Use these for name, id, or property filtering\n"
-        
+
         if 'tags' in hints:
             hint_str += f"\n🏷️ TAG FILTERS: {', '.join(hints['tags'])}\n"
             hint_str += "   Filter: | where tags.tagName == 'value'\n"
-        
+
         if 'resource_groups' in hints:
             rgs_list = ', '.join([f"'{rg}'" for rg in hints['resource_groups']])
             hint_str += f"\n📦 RESOURCE GROUPS: {', '.join(hints['resource_groups'])}\n"
             hint_str += f"   Filter: | where resourceGroup in~ ({rgs_list})\n"
-        
+
         hint_str += "\n⚠️⚠️⚠️ CRITICAL: These are MANDATORY constraints from the user.\n"
         hint_str += "DO NOT override, ignore, or substitute these values.\n"
-        
+
         return hint_str
     
     async def _generate_kql_from_natural_language(self, natural_query: str, resource_context: Dict[str, Any] = None, user_info: Dict[str, Any] = None, original_user_query: str = None) -> str:
@@ -1710,12 +1553,7 @@ Generate your query using ONLY the names from the documentation above.\n\n"""
             
             # Get real Microsoft Learn KQL examples
             resource_type = resource_context.get("resource_type") if resource_context else None
-            
-            # If no resource_type from context, try to infer from the query
-            if not resource_type:
-                resource_type = await self._infer_resource_type_from_query(natural_query)
-                logger.info(f" Inferred resource_type from query: {resource_type}")
-            else:
+            if resource_type:
                 logger.info(f" Using resource_type from context: {resource_type}")
             
             # Fetch 'kind' field for resources that need it (e.g., Microsoft.Cdn/profiles)

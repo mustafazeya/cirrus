@@ -709,6 +709,17 @@ class ApiService {
     return response.data;
   }
 
+  // Submit thumbs feedback on an AI message
+  async submitMessageFeedback(params: {
+    conversation_id: string;
+    message_id: string;
+    feedback: 'positive' | 'negative';
+    correction?: string;
+  }): Promise<ApiResponse> {
+    const response = await this.client.post('/api/ai/feedback', params);
+    return response.data;
+  }
+
   // Import a template
   async importTemplate(templateData: {
     name: string;

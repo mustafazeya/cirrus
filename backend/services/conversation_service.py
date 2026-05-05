@@ -356,5 +356,40 @@ class ConversationService:
         # Create new conversation
         return await self.create_conversation(user_id)
 
+    async def store_feedback(
+        self,
+        conversation_id: str,
+        message_id: str,
+        user_id: str,
+        feedback: str,
+        correction: Optional[str] = None,
+    ) -> bool:
+        """
+        Attach user feedback to a specific message and persist to Redis.
+
+        feedback: "positive" | "negative"
+        correction: Optional free-text the user wants the AI to act on next turn.
+        """
+        conversation = await self.get_conversation(conversation_id, user_id)
+        if not conversation or conversation.user_id != user_id:
+            return False
+
+        for msg in conversation.messages:
+            if msg.id == message_id:
+                msg.feedback = feedback
+                msg.correction = correction
+                break
+        else:
+            return False
+
+        conversation.updated_at = now_cet()
+        await self._persist_conversation(conversation)
+        logger.info(
+            f"Feedback stored: conversation={conversation_id} message={message_id} "
+            f"feedback={feedback} has_correction={bool(correction)}"
+        )
+        return True
+
+
 # Global instance
 conversation_service = ConversationService()

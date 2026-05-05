@@ -73,5 +73,5 @@ export const graphConfig = {
 // API configuration
 export const API_CONFIG = {
   baseURL: process.env.NEXT_PUBLIC_API_URL!,
-  timeout: 300000, // 300 seconds (5 minutes) - AI queries with complex analysis need more time
+  timeout: 600000, // 600 seconds (10 minutes) - AI queries with complex analysis need more time
 };

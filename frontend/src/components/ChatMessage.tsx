@@ -10,8 +10,10 @@ import CostVisualization from './CostVisualization';
 import MetricsChart from './MetricsChart';
 import { useAppStore } from '../store/appStore';
 import RcaResultCard from './RcaResultCard';
-import { ClipboardDocumentIcon, ArrowPathIcon, CheckIcon, ArrowDownTrayIcon, ArrowUpIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentIcon, ArrowPathIcon, CheckIcon, ArrowDownTrayIcon, ArrowUpIcon, HandThumbUpIcon, HandThumbDownIcon } from '@heroicons/react/24/outline';
+import { HandThumbUpIcon as HandThumbUpSolid, HandThumbDownIcon as HandThumbDownSolid } from '@heroicons/react/24/solid';
 import toast from 'react-hot-toast';
+import { apiService } from '../services/apiService';
 
 // ── ThinkingBubble ────────────────────────────────────────────────────────────
 // Defined at module scope (NOT inside ChatMessage) so React never remounts it
@@ -53,6 +55,7 @@ interface ChatMessageProps {
   actions?: Array<{ label: string; query: string }>;
   onActionClick?: (query: string) => void;
   onRerun?: (content: string) => void;
+  conversationId?: string;
 }
 
 export default function ChatMessage({
@@ -65,6 +68,7 @@ export default function ChatMessage({
   actions,
   onActionClick,
   onRerun,
+  conversationId,
 }: ChatMessageProps) {
   const isUser = role === 'user';
   const { user, messageLayoutStyle } = useAppStore();
@@ -72,6 +76,113 @@ export default function ChatMessage({
   const [exported, setExported] = useState(false);
   const messageRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const [feedbackGiven, setFeedbackGiven] = useState<'positive' | 'negative' | null>(null);
+  const [showCorrectionBox, setShowCorrectionBox] = useState(false);
+  const [correction, setCorrection] = useState('');
+  const [correctionSent, setCorrectionSent] = useState(false);
+
+  const handleFeedback = async (type: 'positive' | 'negative') => {
+    if (!conversationId || feedbackGiven === type) return;
+    try {
+      await apiService.submitMessageFeedback({
+        conversation_id: conversationId,
+        message_id: id,
+        feedback: type,
+      });
+      setFeedbackGiven(type);
+      if (type === 'negative') {
+        setShowCorrectionBox(true);
+      } else {
+        toast.success('Thanks for the feedback!');
+      }
+    } catch {
+      toast.error('Failed to send feedback');
+    }
+  };
+
+  const handleSendCorrection = async () => {
+    if (!conversationId || !correction.trim()) {
+      setShowCorrectionBox(false);
+      toast.success('Feedback noted.');
+      return;
+    }
+    try {
+      await apiService.submitMessageFeedback({
+        conversation_id: conversationId,
+        message_id: id,
+        feedback: 'negative',
+        correction: correction.trim(),
+      });
+      setCorrectionSent(true);
+      setShowCorrectionBox(false);
+      toast.success("Got it — I'll do better next time.");
+    } catch {
+      toast.error('Failed to send correction');
+    }
+  };
+
+  const renderFeedbackButtons = () => (
+    <div className="flex items-center gap-1">
+      <button
+        onClick={() => handleFeedback('positive')}
+        className={`p-1 rounded transition-colors ${
+          feedbackGiven === 'positive'
+            ? 'text-green-600 dark:text-green-400'
+            : 'text-gray-400 hover:text-green-600 dark:hover:text-green-400'
+        }`}
+        title="Good response"
+        disabled={!!feedbackGiven}
+      >
+        {feedbackGiven === 'positive'
+          ? <HandThumbUpSolid className="w-3.5 h-3.5" />
+          : <HandThumbUpIcon className="w-3.5 h-3.5" />}
+      </button>
+      <button
+        onClick={() => handleFeedback('negative')}
+        className={`p-1 rounded transition-colors ${
+          feedbackGiven === 'negative'
+            ? 'text-rose-600 dark:text-rose-400'
+            : 'text-gray-400 hover:text-rose-600 dark:hover:text-rose-400'
+        }`}
+        title="Bad response"
+        disabled={!!feedbackGiven}
+      >
+        {feedbackGiven === 'negative'
+          ? <HandThumbDownSolid className="w-3.5 h-3.5" />
+          : <HandThumbDownIcon className="w-3.5 h-3.5" />}
+      </button>
+    </div>
+  );
+
+  const renderCorrectionBox = () => {
+    if (!showCorrectionBox) return null;
+    return (
+      <div className="mt-2 flex flex-col gap-1.5">
+        <textarea
+          autoFocus
+          value={correction}
+          onChange={e => setCorrection(e.target.value)}
+          placeholder="What was wrong? (optional)"
+          className="w-full text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 p-2 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          rows={2}
+        />
+        <div className="flex gap-2">
+          <button
+            onClick={handleSendCorrection}
+            className="text-xs px-2.5 py-1 bg-rose-600 text-white rounded hover:bg-rose-700 transition-colors"
+          >
+            {correction.trim() ? 'Send correction' : 'Skip'}
+          </button>
+          <button
+            onClick={() => { setShowCorrectionBox(false); setCorrection(''); toast.success('Feedback noted.'); }}
+            className="text-xs px-2.5 py-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // ── Loading guard — must come before any layout branch ──────────────────────
   // Both 'fullwidth' and 'bubble' layouts render via ReactMarkdown; when content
@@ -770,8 +881,12 @@ ${body}
                     <ArrowUpIcon className="w-3.5 h-3.5" />
                     <span>Move to Top</span>
                   </button>
+
+                  {conversationId && renderFeedbackButtons()}
                 </div>
               )}
+
+              {renderCorrectionBox()}
             </div>
           </div>
         </div>
@@ -1037,8 +1152,12 @@ ${body}
               <ArrowUpIcon className="w-3 h-3" />
               <span>Move to Top</span>
             </button>
+
+            {conversationId && renderFeedbackButtons()}
           </div>
         )}
+
+        {renderCorrectionBox()}
       </div>
       )} {/* end AI branch of isUser ternary */}
 
