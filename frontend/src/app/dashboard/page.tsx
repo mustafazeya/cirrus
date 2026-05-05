@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useIsAuthenticated } from '@azure/msal-react';
 import { useRouter } from 'next/navigation';
 import { useAppStore, getVisibleSubscriptions } from '../../store/appStore';
@@ -27,8 +27,6 @@ import {
   BookmarkIcon,
   RectangleStackIcon,
   MapPinIcon,
-  TrashIcon,
-  XCircleIcon,
 } from '@heroicons/react/24/outline';
 import MultiSearchableSelect from '../../components/MultiSearchableSelect';
 
@@ -101,11 +99,6 @@ export default function DashboardPage() {
     useFilteredSubscriptionsOnly
   );
 
-  // Incremented each time a new orphan request is kicked off.
-  // fetchOrphanData checks its captured generation against this ref before
-  // writing state — prevents a slow previous request from overwriting fresher data.
-  const orphanGenerationRef = useRef(0);
-  
   const [loading, setLoading] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
@@ -120,9 +113,6 @@ export default function DashboardPage() {
   const [loadingPolicy, setLoadingPolicy] = useState(false);
   const [loadingSecurityScore, setLoadingSecurityScore] = useState(false);
   const [resourceHealth, setResourceHealth] = useState<any>(null);
-  const [orphanData, setOrphanData] = useState<any>(null);
-  const [loadingOrphan, setLoadingOrphan] = useState(false);
-  const [showOrphanCategory, setShowOrphanCategory] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [changeAnalysis, setChangeAnalysis] = useState<any>(null);
@@ -170,8 +160,6 @@ export default function DashboardPage() {
       setSecurityScore(null);
       setResourceHealth(null);
       setChangeAnalysis(null);
-      setOrphanData(null);
-      setShowOrphanCategory(null);
       return;
     }
     
@@ -293,7 +281,6 @@ export default function DashboardPage() {
       setPolicyCompliance(null);
       setSecurityScore(null);
       setResourceHealth(null);
-      setOrphanData(null);
       return;
     }
 
@@ -304,12 +291,6 @@ export default function DashboardPage() {
     setLoadingPolicy(true);
     setLoadingSecurityScore(true);
     setLoadingGovernance(true); // covers health + changes
-
-    // Clear stale orphan data immediately so old subscription's results
-    // don't remain visible while the new request is in-flight
-    setOrphanData(null);
-    setLoadingOrphan(true);
-    orphanGenerationRef.current += 1;
 
     const policyP = apiService.getPolicyCompliance(subs)
       .then(r => { setPolicyCompliance((r as any) ?? null); })
@@ -331,38 +312,6 @@ export default function DashboardPage() {
 
     // Clear shared governance spinner once health + changes are done
     Promise.allSettled([healthP, changesP]).finally(() => setLoadingGovernance(false));
-
-    // Orphan fires after policy + health + changes settle (not security score — it can take 30s).
-    // Security score runs independently and never blocks orphan detection.
-    Promise.allSettled([policyP, healthP, changesP])
-      .then(() => fetchOrphanData(subs));
-  };
-
-  const fetchOrphanData = async (subs?: string[]) => {
-    const subscriptions = subs ?? selectedSubscriptions;
-    if (subscriptions.length === 0) {
-      setOrphanData(null);
-      setLoadingOrphan(false);
-      return;
-    }
-    // Capture generation at call time — discard response if a newer request started
-    const generation = orphanGenerationRef.current;
-    try {
-      setLoadingOrphan(true);
-      const orphanResponse = await apiService.getOrphanDetection(subscriptions);
-      if (orphanGenerationRef.current !== generation) return; // stale — discard
-      if (orphanResponse?.success) {
-        setOrphanData(orphanResponse);
-      } else {
-        setOrphanData(null);
-      }
-    } catch (err) {
-      if (orphanGenerationRef.current !== generation) return;
-      console.error('Failed to fetch orphan detection:', err);
-      setOrphanData(null);
-    } finally {
-      if (orphanGenerationRef.current === generation) setLoadingOrphan(false);
-    }
   };
 
   const fetchResources = async () => {
@@ -1390,116 +1339,6 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-
-          {/* Orphan Resources Card */}
-          {(loadingOrphan || orphanData) && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                  <TrashIcon className="h-5 w-5 text-amber-500" />
-                  Orphan &amp; Idle Detection
-                </h2>
-                {loadingOrphan ? (
-                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
-                    <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-amber-500 rounded-full animate-spin" />
-                    Scanning...
-                  </span>
-                ) : (
-                  <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
-                    {orphanData.total_orphans} found
-                  </span>
-                )}
-              </div>
-
-              {loadingOrphan ? (
-                <div className="space-y-2 animate-pulse">
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                    {[...Array(4)].map((_, i) => (
-                      <div key={i} className="h-16 bg-slate-100 rounded-lg" />
-                    ))}
-                  </div>
-                  {[...Array(4)].map((_, i) => (
-                    <div key={i} className="h-9 bg-slate-100 rounded-lg" />
-                  ))}
-                </div>
-              ) : (<>
-
-              {/* Summary row */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                <div className="text-center p-3 bg-red-50 rounded-lg">
-                  <p className="text-2xl font-bold text-red-600">{orphanData.by_group?.orphan ?? 0}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Orphaned</p>
-                </div>
-                <div className="text-center p-3 bg-amber-50 rounded-lg">
-                  <p className="text-2xl font-bold text-amber-600">{orphanData.by_group?.stopped ?? 0}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Stopped</p>
-                </div>
-                <div className="text-center p-3 bg-orange-50 rounded-lg">
-                  <p className="text-2xl font-bold text-orange-500">{orphanData.by_group?.idle ?? 0}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Idle</p>
-                </div>
-                <div className="text-center p-3 bg-slate-50 rounded-lg">
-                  <p className="text-2xl font-bold text-slate-600">{orphanData.by_group?.hygiene ?? 0}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Hygiene</p>
-                </div>
-              </div>
-
-              {/* Category rows */}
-              <div className="space-y-1.5">
-                {Object.entries(orphanData.categories as Record<string, any>)
-                  .filter(([, cat]) => cat.count > 0)
-                  .map(([key, cat]) => {
-                    const rowColor =
-                      cat.group === 'orphan'  ? 'border-red-100 hover:bg-red-50' :
-                      cat.group === 'stopped' ? 'border-amber-100 hover:bg-amber-50' :
-                      cat.group === 'idle'    ? 'border-orange-100 hover:bg-orange-50' :
-                                                'border-slate-100 hover:bg-slate-50';
-                    const badgeColor =
-                      cat.group === 'orphan'  ? 'bg-red-100 text-red-700' :
-                      cat.group === 'stopped' ? 'bg-amber-100 text-amber-700' :
-                      cat.group === 'idle'    ? 'bg-orange-100 text-orange-700' :
-                                                'bg-slate-100 text-slate-600';
-                    const isOpen = showOrphanCategory === key;
-                    return (
-                      <div key={key}>
-                        <button
-                          onClick={() => setShowOrphanCategory(isOpen ? null : key)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left transition-colors ${rowColor}`}
-                        >
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${badgeColor}`}>{cat.count}</span>
-                            <span className="text-sm text-slate-700 truncate">{cat.label}</span>
-                          </div>
-                          <ChevronDownIcon className={`w-3.5 h-3.5 text-slate-400 flex-shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {isOpen && cat.items.length > 0 && (
-                          <div className="mt-1 mb-1 ml-2 max-h-52 overflow-y-auto space-y-1 pr-1">
-                            {cat.items.map((item: any, i: number) => (
-                              <div key={i} className="flex items-start gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
-                                <XCircleIcon className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-xs font-semibold text-slate-800 truncate">{item.name}</p>
-                                  <p className="text-[11px] text-slate-400 truncate">{item.resourceGroup} · {item.location}</p>
-                                  <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{item.reason}</p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                {orphanData.total_orphans === 0 && (
-                  <div className="text-center py-6">
-                    <CheckCircleIcon className="h-10 w-10 text-green-400 mx-auto mb-2" />
-                    <p className="text-sm text-slate-500">No orphan or idle resources detected</p>
-                  </div>
-                )}
-              </div>
-              </>)}
-            </div>
-          )}
 
           {/* Location Distribution */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

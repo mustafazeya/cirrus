@@ -542,17 +542,6 @@ class ApiService {
     return response.data;
   }
 
-  // Detect orphaned / wasted / stopped Azure resources
-  async getOrphanDetection(subscriptionIds: string[], snapshotAgeDays: number = 30): Promise<ApiResponse> {
-    const response = await this.client.get('/api/governance/orphan-detection', {
-      params: {
-        subscription_ids: subscriptionIds.join(','),
-        snapshot_age_days: snapshotAgeDays,
-      }
-    });
-    return response.data;
-  }
-
   // Get Azure Resource changes (Change Analysis)
   async getChangeAnalysis(subscriptionIds: string[], hours: number = 24): Promise<ApiResponse> {
     const response = await this.client.get('/api/governance/change-analysis', {

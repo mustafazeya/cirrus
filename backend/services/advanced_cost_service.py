@@ -1362,8 +1362,9 @@ class AdvancedCostService:
                 
                 if page_count > 1:
                     logger.info(f" Pagination complete: Fetched {page_count} pages with {len(all_rows)} total rows")
-                elif len(all_rows) >= 1000:
-                    logger.warning(f" WARNING: Received {len(all_rows)} rows with no nextLink - results may be incomplete!")
+                elif len(all_rows) == 1000:
+                    # Exactly 1000 rows with no nextLink is ambiguous — Azure may have silently truncated.
+                    logger.warning(f" WARNING: Received exactly 1000 rows with no nextLink - results may be truncated at the page boundary!")
                 
                 # Update result with all rows
                 result.rows = all_rows
