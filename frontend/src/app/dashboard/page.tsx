@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useIsAuthenticated } from '@azure/msal-react';
 import { useRouter } from 'next/navigation';
 import { useAppStore, getVisibleSubscriptions } from '../../store/appStore';
@@ -100,6 +100,11 @@ export default function DashboardPage() {
     filteredSubscriptionIds,
     useFilteredSubscriptionsOnly
   );
+
+  // Incremented each time a new orphan request is kicked off.
+  // fetchOrphanData checks its captured generation against this ref before
+  // writing state — prevents a slow previous request from overwriting fresher data.
+  const orphanGenerationRef = useRef(0);
   
   const [loading, setLoading] = useState(false);
   const [resources, setResources] = useState<Resource[]>([]);
@@ -112,6 +117,8 @@ export default function DashboardPage() {
   const [policyCompliance, setPolicyCompliance] = useState<PolicyComplianceData | null>(null);
   const [securityScore, setSecurityScore] = useState<SecurityScoreData | null>(null);
   const [loadingGovernance, setLoadingGovernance] = useState(false);
+  const [loadingPolicy, setLoadingPolicy] = useState(false);
+  const [loadingSecurityScore, setLoadingSecurityScore] = useState(false);
   const [resourceHealth, setResourceHealth] = useState<any>(null);
   const [orphanData, setOrphanData] = useState<any>(null);
   const [loadingOrphan, setLoadingOrphan] = useState(false);
@@ -168,7 +175,6 @@ export default function DashboardPage() {
       return;
     }
     
-    console.log(' Auto-fetching data for subscription change');
     fetchResources();
     fetchCostData();
     fetchGovernanceData();
@@ -180,7 +186,6 @@ export default function DashboardPage() {
     if (selectedSubscriptions.length === 0) return;
 
     const refreshInterval = setInterval(() => {
-      console.log(' Auto-refreshing dashboard data...');
       fetchResources();
       fetchCostData();
       fetchGovernanceData();
@@ -210,21 +215,12 @@ export default function DashboardPage() {
       const lastMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 0, 0));
       const lastMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59));
       
-      console.log(` Date ranges: Current=${currentMonthStart.toISOString()} to ${currentMonthEnd.toISOString()}, Last=${lastMonthStart.toISOString()} to ${lastMonthEnd.toISOString()}`);
-      
-      // Fetch current month FIRST, then previous month SEQUENTIALLY
-      // This prevents overwhelming Azure Cost Management API with parallel requests
-      // Azure has strict rate limits: 12 QPU/10s, where 1 QPU = 1 month of data
-      console.log(' Fetching current month costs...');
       const currentResponse = await apiService.getSubscriptionCosts(
         selectedSubscriptions,
         currentMonthStart.toISOString(),
         currentMonthEnd.toISOString(),
         'ServiceName'
       );
-      
-      console.log(' Current month response:', currentResponse);
-      console.log(' Fetching previous month costs...');
       
       const previousResponse = await apiService.getSubscriptionCosts(
         selectedSubscriptions,
@@ -233,9 +229,6 @@ export default function DashboardPage() {
         'ServiceName'
       );
       
-      console.log(' Previous month response:', previousResponse);
-      
-      // apiService already unwraps response.data, so these ARE the data
       const currentData = currentResponse;
       const previousData = previousResponse;
       
@@ -257,8 +250,6 @@ export default function DashboardPage() {
       } else if (totalCurrentMonth > 0) {
         trend = 'up';
       }
-      
-      console.log(` Totals: Current=${totalCurrentMonth} ${currency}, Last=${totalLastMonth} ${currency}, Trend=${trend}`);
       
       setCostData({
         current_month: totalCurrentMonth,
@@ -283,7 +274,6 @@ export default function DashboardPage() {
           };
         }
         
-        console.log(' Per-subscription costs (reused from main request):', subCosts);
         setSubscriptionCosts(subCosts);
       } else {
         setSubscriptionCosts({});
@@ -310,65 +300,68 @@ export default function DashboardPage() {
     // Snapshot subscriptions at call time — avoids stale closure reads in async continuations
     const subs = [...selectedSubscriptions];
 
-    try {
-      setLoadingGovernance(true);
+    // Each card has its own loading flag so they render independently
+    setLoadingPolicy(true);
+    setLoadingSecurityScore(true);
+    setLoadingGovernance(true); // covers health + changes
 
-      // Fast governance calls — do NOT include orphan detection here
-      const [policyResponse, securityResponse, healthResponse, changesResponse] = await Promise.all([
-        apiService.getPolicyCompliance(subs).catch(err => {
-          console.error('Failed to fetch policy compliance:', err);
-          return null;
-        }),
-        apiService.getSecurityScore(subs).catch(err => {
-          console.error('Failed to fetch security score:', err);
-          return null;
-        }),
-        apiService.getResourceHealth(subs).catch(err => {
-          console.error('Failed to fetch resource health:', err);
-          return null;
-        }),
-        apiService.getChangeAnalysis(subs, 24).catch(err => {
-          console.error('Failed to fetch change analysis:', err);
-          return null;
-        }),
-      ]);
+    // Clear stale orphan data immediately so old subscription's results
+    // don't remain visible while the new request is in-flight
+    setOrphanData(null);
+    setLoadingOrphan(true);
+    orphanGenerationRef.current += 1;
 
-      if (policyResponse) setPolicyCompliance(policyResponse); else setPolicyCompliance(null);
-      if (securityResponse) setSecurityScore(securityResponse); else setSecurityScore(null);
-      if (healthResponse) setResourceHealth(healthResponse); else setResourceHealth(null);
-      if (changesResponse) setChangeAnalysis(changesResponse); else setChangeAnalysis(null);
-    } catch (error) {
-      console.error('Failed to fetch governance data:', error);
-      setPolicyCompliance(null);
-      setSecurityScore(null);
-      setResourceHealth(null);
-    } finally {
-      setLoadingGovernance(false);
-    }
+    const policyP = apiService.getPolicyCompliance(subs)
+      .then(r => { setPolicyCompliance((r as any) ?? null); })
+      .catch(() => { setPolicyCompliance(null); })
+      .finally(() => setLoadingPolicy(false));
 
-    // Orphan detection is slow — fire separately, pass the same snapshot
-    fetchOrphanData(subs);
+    const securityP = apiService.getSecurityScore(subs)
+      .then(r => { setSecurityScore((r as any) ?? null); })
+      .catch(() => { setSecurityScore(null); })
+      .finally(() => setLoadingSecurityScore(false));
+
+    const healthP = apiService.getResourceHealth(subs)
+      .then(r => { setResourceHealth(r ?? null); })
+      .catch(() => { setResourceHealth(null); });
+
+    const changesP = apiService.getChangeAnalysis(subs, 24)
+      .then(r => { setChangeAnalysis(r ?? null); })
+      .catch(() => { setChangeAnalysis(null); });
+
+    // Clear shared governance spinner once health + changes are done
+    Promise.allSettled([healthP, changesP]).finally(() => setLoadingGovernance(false));
+
+    // Orphan fires after policy + health + changes settle (not security score — it can take 30s).
+    // Security score runs independently and never blocks orphan detection.
+    Promise.allSettled([policyP, healthP, changesP])
+      .then(() => fetchOrphanData(subs));
   };
 
   const fetchOrphanData = async (subs?: string[]) => {
     const subscriptions = subs ?? selectedSubscriptions;
     if (subscriptions.length === 0) {
       setOrphanData(null);
+      setLoadingOrphan(false);
       return;
     }
+    // Capture generation at call time — discard response if a newer request started
+    const generation = orphanGenerationRef.current;
     try {
       setLoadingOrphan(true);
       const orphanResponse = await apiService.getOrphanDetection(subscriptions);
+      if (orphanGenerationRef.current !== generation) return; // stale — discard
       if (orphanResponse?.success) {
         setOrphanData(orphanResponse);
       } else {
         setOrphanData(null);
       }
     } catch (err) {
+      if (orphanGenerationRef.current !== generation) return;
       console.error('Failed to fetch orphan detection:', err);
       setOrphanData(null);
     } finally {
-      setLoadingOrphan(false);
+      if (orphanGenerationRef.current === generation) setLoadingOrphan(false);
     }
   };
 
@@ -380,7 +373,6 @@ export default function DashboardPage() {
       for (const subId of selectedSubscriptions) {
         try {
           const response = await apiService.getResources(subId);
-          console.log('Resources response for', subId, ':', response);
           
           // Handle different response structures
           let subResources: any[] = [];
@@ -409,7 +401,6 @@ export default function DashboardPage() {
         }
       }
 
-      console.log('Total resources loaded:', allResources.length);
       setResources(allResources);
     } catch (error) {
       console.error('Failed to fetch resources:', error);
@@ -436,10 +427,6 @@ export default function DashboardPage() {
 
   // Handle saved view selection
   const handleViewSelected = (view: SavedView) => {
-    console.log(' Loading saved dashboard view:', view.name);
-    console.log(' View filters:', view.filters);
-    
-    // Set flag to prevent clearing the view when filters change
     setIsLoadingFromView(true);
     
     // Apply filters from the view
@@ -1053,7 +1040,7 @@ export default function DashboardPage() {
                   Policy Compliance
                 </h2>
               </div>
-              {loadingGovernance ? (
+              {loadingPolicy ? (
                 <div className="text-center py-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-200 border-t-indigo-600 mx-auto"></div>
                 </div>
@@ -1128,7 +1115,7 @@ export default function DashboardPage() {
                   Defender Security Score
                 </h2>
               </div>
-              {loadingGovernance ? (
+              {loadingSecurityScore ? (
                 <div className="text-center py-4">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
                 </div>
@@ -1286,7 +1273,7 @@ export default function DashboardPage() {
                         <span className="text-3xl font-bold text-slate-900">
                           {resourceHealth.overall_health_percentage.toFixed(0)}%
                         </span>
-                        <span className="text-xs text-slate-500">Healthy</span>
+                        <span className="text-xs text-slate-500">of monitored</span>
                       </div>
                     </div>
                   </div>
@@ -1333,7 +1320,7 @@ export default function DashboardPage() {
                     </button>
                   </div>
                   <div className="text-center text-sm text-slate-500 pt-2 border-t border-slate-200">
-                    {resourceHealth.total} resources monitored
+                    {resourceHealth.total} of subscription resources support health monitoring
                   </div>
 
                   {/* Drilldown: non-healthy resources */}

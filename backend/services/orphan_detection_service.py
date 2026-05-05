@@ -100,7 +100,13 @@ class OrphanDetectionService:
                             continue
 
                         if response.status_code != 200:
-                            logger.warning(f"[{name}] ARG query HTTP {response.status_code}: {response.text[:300]}")
+                            try:
+                                err = response.json()
+                                details = err.get("error", {}).get("details", [])
+                                msg = details[0].get("message", "") if details else err.get("error", {}).get("message", response.text)
+                            except Exception:
+                                msg = response.text
+                            logger.warning(f"[{name}] ARG HTTP {response.status_code}: {msg}")
                             return results
 
                         break
@@ -146,7 +152,7 @@ class OrphanDetectionService:
                       diskSizeGB = toint(properties.diskSizeGB),
                       skuName    = tostring(sku.name),
                       timeCreated = tostring(properties.timeCreated)
-        """)
+        """, name="unattached_disks")
         return [dict(r, reason=f"Unattached {r.get('skuName','disk')} ({r.get('diskSizeGB','?')} GB) — not connected to any VM") for r in rows]
 
     async def _detect_unassociated_public_ips(self, token, sub_ids):
@@ -172,7 +178,7 @@ class OrphanDetectionService:
                       diskSizeGB  = toint(properties.diskSizeGB),
                       ageInDays,
                       timeCreated = tostring(properties.timeCreated)
-        """)
+        """, name="old_snapshots")
         return [dict(r, reason=f"Snapshot is {r.get('ageInDays','?')} days old") for r in rows]
 
     async def _detect_empty_app_service_plans(self, token, sub_ids):
@@ -190,23 +196,17 @@ class OrphanDetectionService:
         return [dict(r, reason=f"App Service Plan ({r.get('skuName','?')}, {r.get('skuTier','?')}) has 0 apps") for r in rows]
 
     async def _detect_orphan_nics(self, token, sub_ids):
+        # ARG does not support cross-table joins within Resources in a single query.
+        # NetApp NICs have nicType='Endpoint' — exclude that along with other known types.
         rows = await self._run_arg_query_full(token, sub_ids, """
             Resources
             | where type =~ 'microsoft.network/networkinterfaces'
             | where isnull(properties.virtualMachine)
             | where isnull(properties.privateEndpoint)
             | where isnull(properties.privateLinkService)
-            | where tostring(properties.nicType) !~ 'Internal'
-            | extend subnetId = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id))
-            | join kind=leftanti (
-                Resources
-                | where type =~ 'microsoft.network/virtualnetworks'
-                | mv-expand subnet = properties.subnets
-                | where array_length(subnet.properties.delegations) > 0
-                | mv-expand delegation = subnet.properties.delegations
-                | where tostring(delegation.properties.serviceName) =~ 'Microsoft.Netapp/volumes'
-                | project subnetId = tolower(tostring(subnet.id))
-            ) on subnetId
+            | extend nicType = tostring(properties.nicType)
+            | where nicType !~ 'Internal'
+            | where nicType !~ 'Endpoint'
             | project id, name, resourceGroup, subscriptionId, location
         """, name="orphan_nics")
         return [dict(r, reason="NIC not attached to any VM, private endpoint, private link service, internal service, or NetApp volume — likely a leftover from a deleted VM") for r in rows]
@@ -254,35 +254,33 @@ class OrphanDetectionService:
         rows = await self._run_arg_query_full(token, sub_ids, """
             Resources
             | where type =~ 'microsoft.containerservice/managedclusters'
-            | where properties.powerState.code =~ 'Stopped'
+            | extend powerStateCode = tostring(properties.powerState.code)
+            | where powerStateCode =~ 'Stopped'
             | project id, name, resourceGroup, subscriptionId, location,
-                      kubernetesVersion = tostring(properties.kubernetesVersion),
-                      nodeCount = toint(properties.agentPoolProfiles[0].count)
-        """)
+                      kubernetesVersion = tostring(properties.kubernetesVersion)
+        """, name="stopped_aks")
         return [dict(r, reason="AKS cluster is stopped — node VMs are deallocated but control plane and storage still incur charges") for r in rows]
 
     async def _detect_stopped_app_services(self, token, sub_ids):
         rows = await self._run_arg_query_full(token, sub_ids, """
             Resources
             | where type =~ 'microsoft.web/sites'
-            | where properties.state =~ 'Stopped'
-            | project id, name, resourceGroup, subscriptionId, location,
-                      kind             = tostring(kind),
-                      appServicePlan   = tostring(split(properties.serverFarmId, '/')[8])
-        """)
+            | extend siteState = tostring(properties.state)
+            | where siteState =~ 'Stopped'
+            | project id, name, resourceGroup, subscriptionId, location
+        """, name="stopped_app_services")
         return [dict(r, reason="App Service is stopped — the underlying App Service Plan continues to bill") for r in rows]
 
     async def _detect_stopped_logic_apps(self, token, sub_ids):
         rows = await self._run_arg_query_full(token, sub_ids, """
             Resources
             | where type =~ 'microsoft.logic/workflows'
-            | extend state = tostring(properties.state)
-            | where state =~ 'Disabled' or state =~ 'Suspended'
+            | extend workflowState = tostring(properties.state)
+            | where workflowState =~ 'Disabled' or workflowState =~ 'Suspended'
             | project id, name, resourceGroup, subscriptionId, location,
-                      state,
-                      kind = tostring(kind)
+                      workflowState
         """, name="stopped_logic_apps")
-        return [dict(r, reason=f"Logic App is {r.get('state','disabled')} — if on a Standard plan the underlying App Service Plan continues to bill") for r in rows]
+        return [dict(r, reason=f"Logic App is {r.get('workflowState','disabled')} — if on a Standard plan the underlying App Service Plan continues to bill") for r in rows]
 
     async def _detect_paused_sql_databases(self, token, sub_ids):
         # Serverless Azure SQL DBs can be auto-paused; still bill for storage
@@ -294,7 +292,7 @@ class OrphanDetectionService:
                       edition         = tostring(properties.edition),
                       serviceObjective = tostring(properties.currentServiceObjectiveName),
                       maxSizeBytes    = tolong(properties.maxSizeBytes)
-        """)
+        """, name="paused_sql_databases")
         return [dict(r, reason="Azure SQL Database is paused (serverless auto-pause) — storage costs continue") for r in rows]
 
     async def _detect_stopped_sql_managed_instances(self, token, sub_ids):
@@ -305,7 +303,7 @@ class OrphanDetectionService:
             | project id, name, resourceGroup, subscriptionId, location,
                       sku = tostring(sku.name),
                       vCores = toint(properties.vCores)
-        """)
+        """, name="stopped_sql_managed_instances")
         return [dict(r, reason="SQL Managed Instance is stopped — storage and backup costs continue") for r in rows]
 
     async def _detect_stopped_postgresql(self, token, sub_ids):
@@ -316,7 +314,7 @@ class OrphanDetectionService:
             | project id, name, resourceGroup, subscriptionId, location,
                       skuName = tostring(sku.name),
                       storageSizeGB = toint(properties.storage.storageSizeGB)
-        """)
+        """, name="stopped_postgresql")
         return [dict(r, reason="PostgreSQL Flexible Server is stopped — storage costs continue; compute resumes after 7 days if not started") for r in rows]
 
     async def _detect_stopped_mysql(self, token, sub_ids):
@@ -327,7 +325,7 @@ class OrphanDetectionService:
             | project id, name, resourceGroup, subscriptionId, location,
                       skuName = tostring(sku.name),
                       storageSizeGB = toint(properties.storage.storageSizeGB)
-        """)
+        """, name="stopped_mysql")
         return [dict(r, reason="MySQL Flexible Server is stopped — storage costs continue; Azure auto-restarts after 7 days") for r in rows]
 
     async def _detect_stopped_mariadb(self, token, sub_ids):
@@ -337,7 +335,7 @@ class OrphanDetectionService:
             | where properties.userVisibleState =~ 'Disabled'
             | project id, name, resourceGroup, subscriptionId, location,
                       skuName = tostring(sku.name)
-        """)
+        """, name="stopped_mariadb")
         return [dict(r, reason="MariaDB server is disabled — storage costs continue") for r in rows]
 
     async def _detect_stopped_spring_apps(self, token, sub_ids):
@@ -350,7 +348,7 @@ class OrphanDetectionService:
             | where tier !in~ ('', 'Basic')
             | where appCount == 0
             | project id, name, resourceGroup, subscriptionId, location, tier, appCount
-        """)
+        """, name="stopped_spring_apps")
         return [dict(r, reason="Azure Spring Apps service has no apps deployed — tier costs still apply") for r in rows]
 
     async def _detect_stopped_container_instances(self, token, sub_ids):
@@ -363,7 +361,7 @@ class OrphanDetectionService:
                       osType        = tostring(properties.osType),
                       restartPolicy = tostring(properties.restartPolicy),
                       containerState
-        """)
+        """, name="stopped_container_instances")
         return [dict(r, reason="Container Instance group is stopped/terminated — persisted data volumes may still cost") for r in rows]
 
     # ──────────────────────────────────────────────────────────────
@@ -380,7 +378,7 @@ class OrphanDetectionService:
             | where array_length(properties.backendAddressPools) == 0
             | project id, name, resourceGroup, subscriptionId, location,
                       skuName = tostring(sku.name)
-        """)
+        """, name="empty_load_balancers")
         return [dict(r, reason=f"Standard Load Balancer ({r.get('skuName','?')}) has no backend pools — billed with no traffic") for r in rows]
 
     async def _detect_empty_app_gateways(self, token, sub_ids):
@@ -392,7 +390,7 @@ class OrphanDetectionService:
             | project id, name, resourceGroup, subscriptionId, location,
                       skuName = tostring(properties.sku.name),
                       tier    = tostring(properties.sku.tier)
-        """)
+        """, name="empty_app_gateways")
         return [dict(r, reason=f"Application Gateway ({r.get('skuName','?')}) has no backend address pools configured") for r in rows]
 
     # ──────────────────────────────────────────────────────────────

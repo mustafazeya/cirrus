@@ -102,7 +102,7 @@ export default function TemplateSuggestions({
             <div className="flex items-start justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-lg">{getCategoryIcon(template.category)}</span>
+                  {(() => { const Icon = getCategoryIcon(template.category); return <Icon className="w-4 h-4 text-indigo-400 flex-shrink-0" />; })()}
                   <span className="text-sm font-medium text-gray-900 truncate">
                     {template.name}
                   </span>

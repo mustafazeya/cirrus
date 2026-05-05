@@ -15,7 +15,7 @@ import { StarIcon as StarSolidIcon } from '@heroicons/react/24/solid';
 import { apiService } from '../services/apiService';
 import toast from 'react-hot-toast';
 import type { QueryTemplateListItem, TemplateCategory } from '../types/templates';
-import { TEMPLATE_CATEGORIES_WITH_ALL, getCategoryIcon } from '../constants/templateCategories';
+import { TEMPLATE_CATEGORIES_WITH_ALL, getCategoryIcon, getCategoryLabel } from '../constants/templateCategories';
 
 interface TemplateMarketplaceProps {
   onClose: () => void;
@@ -121,12 +121,12 @@ export default function TemplateMarketplace({ onClose, onImportTemplate }: Templ
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b bg-gradient-to-r from-blue-600 to-indigo-600">
+        <div className="flex items-center justify-between p-6 border-b bg-indigo-600">
           <div className="flex items-center gap-3">
             <GlobeAltIcon className="h-6 w-6 text-white" />
             <div>
               <h2 className="text-2xl font-bold text-white">Template Marketplace</h2>
-              <p className="text-sm text-blue-100">Discover and import community templates</p>
+              <p className="text-sm text-indigo-200">Discover and import community templates</p>
             </div>
           </div>
           <button
@@ -189,7 +189,7 @@ export default function TemplateMarketplace({ onClose, onImportTemplate }: Templ
               <option value="all">All Categories</option>
               {categories.filter(c => c !== 'all').map(cat => (
                 <option key={cat} value={cat}>
-                  {getCategoryIcon(cat as TemplateCategory)} {cat}
+                  {getCategoryLabel(cat as TemplateCategory)}
                 </option>
               ))}
             </select>
@@ -222,8 +222,8 @@ export default function TemplateMarketplace({ onClose, onImportTemplate }: Templ
                   {/* Header */}
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2 flex-1">
-                      <span className="text-2xl">{getCategoryIcon(template.category)}</span>
-                      <h4 className="font-semibold text-gray-900 line-clamp-1">{template.name}</h4>
+                      {(() => { const Icon = getCategoryIcon(template.category); return <Icon className="w-4 h-4 text-indigo-500 flex-shrink-0" />; })()}
+                      <h4 className="font-semibold text-slate-900 line-clamp-1">{template.name}</h4>
                     </div>
                     {template.is_system && (
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">System</span>

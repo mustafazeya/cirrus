@@ -783,7 +783,7 @@ export default function CostsPage() {
               <button
                 onClick={() => setSaveViewDialogOpen(true)}
                 disabled={selectedSubscriptions.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors text-[12.5px] font-semibold"
+                className="btn-primary text-[12.5px]"
                 title="Save current filters as a view"
               >
                 <BookmarkIcon className="h-4 w-4" />
@@ -794,7 +794,7 @@ export default function CostsPage() {
               <button
                 onClick={fetchCosts}
                 disabled={loading || selectedSubscriptions.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[12.5px] font-medium"
+                className="btn-secondary text-[12.5px] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg
                   className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
@@ -1066,7 +1066,7 @@ export default function CostsPage() {
                   return (
                     <span
                       key={subId}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 bg-blue-100 text-blue-800 rounded-md text-xs font-medium"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:py-1 bg-indigo-100 text-indigo-800 rounded-md text-xs font-medium"
                     >
                       <RectangleStackIcon className="h-3 w-3" />
                       <span className="truncate max-w-[150px] sm:max-w-[200px]">
@@ -1074,7 +1074,7 @@ export default function CostsPage() {
                       </span>
                       <button
                         onClick={() => handleSubscriptionsChange(selectedSubscriptions.filter(id => id !== subId))}
-                        className="hover:text-blue-900 active:text-blue-950 flex-shrink-0 min-w-[20px] min-h-[20px] flex items-center justify-center"
+                        className="hover:text-indigo-900 active:text-indigo-950 flex-shrink-0 min-w-[20px] min-h-[20px] flex items-center justify-center"
                         aria-label="Remove"
                       >
                         ×
@@ -1240,10 +1240,10 @@ export default function CostsPage() {
 
             {/* Budget Overview Section */}
             {budgetData?.success && budgetData.budgets.length > 0 && (
-              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl border border-purple-100 shadow-sm p-6">
+              <div className="bg-indigo-50/60 rounded-xl border border-indigo-100 shadow-sm p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <CurrencyDollarIcon className="h-6 w-6 text-purple-600" />
+                    <CurrencyDollarIcon className="h-6 w-6 text-indigo-600" />
                     <h3 className="text-lg font-semibold text-slate-900">Budget Overview</h3>
                     <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-full">
                       {budgetData.budget_count} {budgetData.budget_count === 1 ? 'Budget' : 'Budgets'}

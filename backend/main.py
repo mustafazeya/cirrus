@@ -941,6 +941,12 @@ async def get_security_score(
         
     except HTTPException:
         raise
+    except asyncio.TimeoutError:
+        logger.warning(f"Security score timed out for {len(sub_ids)} subscription(s)")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Security score request timed out — Defender API is slow for large subscriptions"
+        )
     except Exception as e:
         logger.error(f"Failed to get security score: {e}")
         raise HTTPException(

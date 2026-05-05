@@ -275,7 +275,7 @@ export default function TemplateBrowser({
                       : 'bg-white border border-gray-200 text-slate-600 hover:border-indigo-300 hover:text-indigo-600'
                   }`}
                 >
-                  {cat === 'all' ? 'All' : `${getCategoryIcon(cat as TemplateCategory)} ${cat}`}
+                  {cat === 'all' ? 'All' : (() => { const Icon = getCategoryIcon(cat as TemplateCategory); return <><Icon className="w-3 h-3 inline mr-1" />{cat}</>; })()}
                 </button>
               ))}
             </div>
@@ -415,7 +415,7 @@ function TemplateCard({ template, onSelect, onDelete, isAdmin }: TemplateCardPro
       {/* Header */}
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <span className="text-sm w-6 h-6 flex items-center justify-center bg-indigo-50 rounded-md flex-shrink-0">{getCategoryIcon(template.category)}</span>
+          <span className="w-6 h-6 flex items-center justify-center bg-indigo-50 rounded-md flex-shrink-0">{(() => { const Icon = getCategoryIcon(template.category); return <Icon className="w-3.5 h-3.5 text-indigo-500" />; })()}</span>
           <h4 className="text-[12.5px] font-semibold text-slate-900 line-clamp-1">{template.name}</h4>
         </div>
         {getVisibilityIcon()}

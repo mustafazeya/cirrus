@@ -142,9 +142,9 @@ export default function ProfilePage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
+          <h2 className="text-xl font-semibold text-slate-900 mb-4">
             Please sign in to view your profile
           </h2>
         </div>
@@ -154,10 +154,10 @@ export default function ProfilePage() {
 
   if (isLoading || !user) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading profile...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-indigo-200 border-t-indigo-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">Loading profile...</p>
         </div>
       </div>
     );
@@ -166,25 +166,25 @@ export default function ProfilePage() {
   return (
     <div className="max-w-3xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
-          <p className="mt-2 text-gray-600">
+          <h1 className="text-[22px] font-bold text-slate-900 tracking-tight">Profile</h1>
+          <p className="mt-1 text-slate-500">
             Manage your account information and preferences
           </p>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
           <div className="px-6 py-6">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-6">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-6">
               Account Information
             </h2>
             
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-slate-700">
                   Profile Photo
                 </label>
                 <div className="mt-2 flex items-end">
-                  <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-200">
+                  <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-200">
                     {user.photoUrl ? (
                       <img
                         src={user.photoUrl}
@@ -192,7 +192,7 @@ export default function ProfilePage() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      <div className="w-full h-full flex items-center justify-center text-slate-400">
                         <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
                         </svg>
@@ -202,7 +202,7 @@ export default function ProfilePage() {
                   <button
                     onClick={refreshPhoto}
                     disabled={isRefreshingPhoto}
-                    className="p-1.5 text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-1.5 text-indigo-600 hover:text-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Refresh Photo"
                   >
                     <ArrowPathIcon className={`h-5 w-5 ${isRefreshingPhoto ? 'animate-spin' : ''}`} />
@@ -211,37 +211,37 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-slate-700">
                   Display Name
                 </label>
-                <div className="mt-1 text-sm text-gray-900">
+                <div className="mt-1 text-sm text-slate-900">
                   {user.name || 'Not provided'}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-slate-700">
                   Email Address
                 </label>
-                <div className="mt-1 text-sm text-gray-900">
+                <div className="mt-1 text-sm text-slate-900">
                   {user.email || 'Not provided'}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-slate-700">
                   User ID
                 </label>
-                <div className="mt-1 text-sm text-gray-900 font-mono">
+                <div className="mt-1 text-sm text-slate-900 font-mono">
                   {user.id || 'Not provided'}
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-slate-700">
                   Tenant ID
                 </label>
-                <div className="mt-1 text-sm text-gray-900 font-mono">
+                <div className="mt-1 text-sm text-slate-900 font-mono">
                   {user.tenantId || 'Not provided'}
                 </div>
               </div>
@@ -249,14 +249,14 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <div className="mt-6 bg-white border border-gray-200 rounded-xl shadow-sm">
+        <div className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm">
           <div className="px-6 py-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                   Azure Subscriptions
                 </h2>
-                <p className="text-sm text-gray-500 mt-1">
+                <p className="text-sm text-slate-500 mt-1">
                   {subscriptions.filter(s => s.state === 'Enabled').length} Active subscription{subscriptions.filter(s => s.state === 'Enabled').length !== 1 ? 's' : ''}
                   {useFilteredSubscriptionsOnly && ` • ${filteredSubscriptionIds.length} selected for filtering`}
                 </p>
@@ -264,7 +264,7 @@ export default function ProfilePage() {
               {subscriptions.length > 0 && (
                 <button
                   onClick={() => setSubscriptionsExpanded(!subscriptionsExpanded)}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
                 >
                   {subscriptionsExpanded ? 'Hide' : 'Manage'}
                 </button>
@@ -279,7 +279,7 @@ export default function ProfilePage() {
                     placeholder="Search subscriptions..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                   />
                   <div className="flex items-center gap-4">
                     <button
@@ -289,7 +289,7 @@ export default function ProfilePage() {
                           .map(s => s.subscription_id);
                         setFilteredSubscriptionIds(enabledSubs);
                       }}
-                      className="text-sm text-blue-600 hover:text-blue-700"
+                      className="text-sm text-indigo-600 hover:text-indigo-700"
                     >
                       Select All Enabled
                     </button>
@@ -323,10 +323,10 @@ export default function ProfilePage() {
                             setFilteredSubscriptionIds([...filteredSubscriptionIds, subscription.subscription_id]);
                           }
                         }}
-                        className={`border rounded-lg p-3 cursor-pointer hover:bg-gray-50 transition-colors ${
+                        className={`border rounded-lg p-3 cursor-pointer hover:bg-slate-50 transition-colors ${
                           isSelected
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200'
+                            ? 'border-indigo-500 bg-indigo-50'
+                            : 'border-slate-200'
                         }`}
                       >
                         <div className="flex justify-between items-start gap-3">
@@ -334,13 +334,13 @@ export default function ProfilePage() {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => {}}
-                            className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                            className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300 rounded"
                           />
                           <div className="flex-1 min-w-0">
-                            <h3 className="text-sm font-medium text-gray-900 truncate">
+                            <h3 className="text-sm font-medium text-slate-900 truncate">
                               {subscription.display_name}
                             </h3>
-                            <p className="text-xs text-gray-500 font-mono truncate mt-1">
+                            <p className="text-xs text-slate-500 font-mono truncate mt-1">
                               {subscription.subscription_id}
                             </p>
                           </div>
@@ -364,32 +364,32 @@ export default function ProfilePage() {
             )}
             
             {!subscriptionsExpanded && subscriptions.length > 0 && (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-slate-500">
                 Click "Manage" to select which subscriptions to show in filters
               </p>
             )}
             
             {subscriptions.length === 0 && (
-              <p className="text-gray-500">No subscriptions found.</p>
+              <p className="text-slate-500">No subscriptions found.</p>
             )}
           </div>
         </div>
 
-        <div className="mt-6 bg-white border border-gray-200 rounded-xl shadow-sm">
+        <div className="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm">
           <div className="px-4 sm:px-6 py-5 sm:py-6">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 sm:mb-6">
+            <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4 sm:mb-6">
               Preferences
             </h2>
             
             <div className="space-y-6">
               {/* Subscription Filter Preference */}
-              <div className="pb-6 border-b border-gray-200">
+              <div className="pb-6 border-b border-slate-200">
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900">
+                    <label className="block text-sm font-medium text-slate-900">
                       Subscription Filtering
                     </label>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-sm text-slate-500 mt-1">
                       {useFilteredSubscriptionsOnly
                         ? `Showing ${filteredSubscriptionIds.length} selected subscription${filteredSubscriptionIds.length !== 1 ? 's' : ''} in filters`
                         : 'Showing all subscriptions in filters'
@@ -399,8 +399,8 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setUseFilteredSubscriptionsOnly(!useFilteredSubscriptionsOnly)}
-                    className={`touch-target-small relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
-                      useFilteredSubscriptionsOnly ? 'bg-blue-600' : 'bg-gray-200'
+                    className={`touch-target-small relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                      useFilteredSubscriptionsOnly ? 'bg-indigo-600' : 'bg-slate-200'
                     }`}
                     role="switch"
                     aria-checked={useFilteredSubscriptionsOnly}
@@ -413,11 +413,11 @@ export default function ProfilePage() {
                     />
                   </button>
                 </div>
-                <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
-                  <span className={!useFilteredSubscriptionsOnly ? 'font-semibold text-gray-900' : ''}>
+                <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
+                  <span className={!useFilteredSubscriptionsOnly ? 'font-semibold text-slate-900' : ''}>
                     All Subscriptions
                   </span>
-                  <span className={useFilteredSubscriptionsOnly ? 'font-semibold text-gray-900' : ''}>
+                  <span className={useFilteredSubscriptionsOnly ? 'font-semibold text-slate-900' : ''}>
                     Filtered Only
                   </span>
                 </div>
@@ -426,7 +426,7 @@ export default function ProfilePage() {
                     No subscriptions selected. Please select subscriptions above to filter.
                   </p>
                 )}
-                <p className="mt-3 text-xs text-gray-500">
+                <p className="mt-3 text-xs text-slate-500">
                   Controls which subscriptions appear in filters on Query, Cost, and Dashboard pages.
                 </p>
               </div>
@@ -435,10 +435,10 @@ export default function ProfilePage() {
               <div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <label className="block text-sm font-medium text-gray-900">
+                    <label className="block text-sm font-medium text-slate-900">
                       Message Display Style
                     </label>
-                    <p className="text-sm text-gray-500 mt-1">
+                    <p className="text-sm text-slate-500 mt-1">
                       {messageLayoutStyle === 'bubble' 
                         ? 'Compact chat bubbles for both user and AI messages'
                         : 'User messages stay as bubbles, AI responses spread full-width for better readability'
@@ -448,8 +448,8 @@ export default function ProfilePage() {
                   <button
                     type="button"
                     onClick={() => setMessageLayoutStyle(messageLayoutStyle === 'bubble' ? 'fullwidth' : 'bubble')}
-                    className={`touch-target-small relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
-                      messageLayoutStyle === 'fullwidth' ? 'bg-blue-600' : 'bg-gray-200'
+                    className={`touch-target-small relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:ring-offset-2 ${
+                      messageLayoutStyle === 'fullwidth' ? 'bg-indigo-600' : 'bg-slate-200'
                     }`}
                     role="switch"
                     aria-checked={messageLayoutStyle === 'fullwidth'}
@@ -462,15 +462,15 @@ export default function ProfilePage() {
                     />
                   </button>
                 </div>
-                <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
-                  <span className={messageLayoutStyle === 'bubble' ? 'font-semibold text-gray-900' : ''}>
+                <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
+                  <span className={messageLayoutStyle === 'bubble' ? 'font-semibold text-slate-900' : ''}>
                     Bubble Style
                   </span>
-                  <span className={messageLayoutStyle === 'fullwidth' ? 'font-semibold text-gray-900' : ''}>
+                  <span className={messageLayoutStyle === 'fullwidth' ? 'font-semibold text-slate-900' : ''}>
                     Full Width
                   </span>
                 </div>
-                <p className="mt-3 text-xs text-gray-500">
+                <p className="mt-3 text-xs text-slate-500">
                   Changes take effect immediately in all conversations.
                 </p>
               </div>

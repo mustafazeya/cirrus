@@ -813,7 +813,10 @@ class GovernanceService:
             """
             
             request = QueryRequest(subscriptions=subscription_ids, query=query)
-            response = await loop.run_in_executor(None, client.resources, request)
+            response = await asyncio.wait_for(
+                loop.run_in_executor(None, client.resources, request),
+                timeout=30.0
+            )
             
             if not hasattr(response, 'data') or not response.data:
                 logger.warning("No security controls found - Defender may be disabled")

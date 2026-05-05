@@ -141,7 +141,7 @@ export default function SaveTemplateModal({
                       : 'bg-white text-slate-600 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'
                   }`}
                 >
-                  {getCategoryIcon(cat)} {cat}
+                  {(() => { const Icon = getCategoryIcon(cat); return <><Icon className="w-3 h-3 inline mr-1" />{cat}</>; })()}
                 </button>
               ))}
             </div>

@@ -207,7 +207,7 @@ export default function AISummaryContent({ content }: AISummaryContentProps) {
             return (
               <div key={index} className="group mt-8 first:mt-0">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white shadow-md">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
                     {getSectionIcon(section.content)}
                   </div>
                   <h3 className="text-xl font-semibold text-gray-900">

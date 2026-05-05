@@ -15,6 +15,7 @@ export default function FloatingAIAssistant({ onOpenChat }: FloatingAIAssistantP
   const [showTooltip, setShowTooltip] = useState(false);
   const dragRef = useRef<HTMLDivElement>(null);
   const dragStartPos = useRef({ x: 0, y: 0 });
+  const hasDragged = useRef(false);
   const router = useRouter();
 
   // Initialize position (bottom right)
@@ -33,6 +34,7 @@ export default function FloatingAIAssistant({ onOpenChat }: FloatingAIAssistantP
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
+    hasDragged.current = false;
     dragStartPos.current = {
       x: e.clientX - position.x,
       y: e.clientY - position.y
@@ -42,6 +44,7 @@ export default function FloatingAIAssistant({ onOpenChat }: FloatingAIAssistantP
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     setIsDragging(true);
+    hasDragged.current = false;
     dragStartPos.current = {
       x: touch.clientX - position.x,
       y: touch.clientY - position.y
@@ -50,6 +53,7 @@ export default function FloatingAIAssistant({ onOpenChat }: FloatingAIAssistantP
 
   const handleMouseMove = (e: MouseEvent) => {
     if (isDragging) {
+      hasDragged.current = true;
       const newX = e.clientX - dragStartPos.current.x;
       const newY = e.clientY - dragStartPos.current.y;
       
@@ -66,6 +70,7 @@ export default function FloatingAIAssistant({ onOpenChat }: FloatingAIAssistantP
 
   const handleTouchMove = (e: TouchEvent) => {
     if (isDragging && e.touches.length > 0) {
+      hasDragged.current = true;
       const touch = e.touches[0];
       const newX = touch.clientX - dragStartPos.current.x;
       const newY = touch.clientY - dragStartPos.current.y;
@@ -106,13 +111,13 @@ export default function FloatingAIAssistant({ onOpenChat }: FloatingAIAssistantP
   }, [isDragging]);
 
   const handleClick = () => {
-    if (!isDragging) {
-      // Navigate to AI page
+    if (!hasDragged.current) {
       router.push('/ai');
       if (onOpenChat) {
         onOpenChat();
       }
     }
+    hasDragged.current = false;
   };
 
   if (!isVisible) return null;

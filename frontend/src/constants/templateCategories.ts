@@ -2,6 +2,17 @@
  * Template Categories - Centralized constants and utilities
  * Single source of truth for template categories
  */
+import type React from 'react';
+import {
+  CurrencyDollarIcon,
+  ShieldCheckIcon,
+  ChartBarIcon,
+  ServerStackIcon,
+  DocumentTextIcon,
+  ScaleIcon,
+  StarIcon,
+  DocumentIcon,
+} from '@heroicons/react/24/outline';
 import type { TemplateCategory } from '../types/templates';
 
 /**
@@ -26,26 +37,18 @@ export const TEMPLATE_CATEGORIES_WITH_ALL: (TemplateCategory | 'all')[] = [
 ];
 
 /**
- * Get the emoji icon for a template category
+ * Get the Heroicon component for a template category
  */
-export function getCategoryIcon(category: TemplateCategory | string): string {
+export function getCategoryIcon(category: TemplateCategory | string): React.ComponentType<{ className?: string }> {
   switch (category) {
-    case 'cost':
-      return '💰';
-    case 'security':
-      return '🔒';
-    case 'performance':
-      return '📈';
-    case 'resources':
-      return '🗄️';
-    case 'logs':
-      return '📋';
-    case 'governance':
-      return '⚖️';
-    case 'custom':
-      return '⭐';
-    default:
-      return '📄';
+    case 'cost':        return CurrencyDollarIcon;
+    case 'security':    return ShieldCheckIcon;
+    case 'performance': return ChartBarIcon;
+    case 'resources':   return ServerStackIcon;
+    case 'logs':        return DocumentTextIcon;
+    case 'governance':  return ScaleIcon;
+    case 'custom':      return StarIcon;
+    default:            return DocumentIcon;
   }
 }
 
