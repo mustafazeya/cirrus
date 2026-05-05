@@ -26,7 +26,9 @@ import {
   MagnifyingGlassIcon,
   BookmarkIcon,
   RectangleStackIcon,
-  MapPinIcon
+  MapPinIcon,
+  TrashIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
 import MultiSearchableSelect from '../../components/MultiSearchableSelect';
 
@@ -111,6 +113,9 @@ export default function DashboardPage() {
   const [securityScore, setSecurityScore] = useState<SecurityScoreData | null>(null);
   const [loadingGovernance, setLoadingGovernance] = useState(false);
   const [resourceHealth, setResourceHealth] = useState<any>(null);
+  const [orphanData, setOrphanData] = useState<any>(null);
+  const [loadingOrphan, setLoadingOrphan] = useState(false);
+  const [showOrphanCategory, setShowOrphanCategory] = useState<string | null>(null);
   const [lastRefreshTime, setLastRefreshTime] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [changeAnalysis, setChangeAnalysis] = useState<any>(null);
@@ -120,6 +125,7 @@ export default function DashboardPage() {
   const [activeChangeFilterColumn, setActiveChangeFilterColumn] = useState<string | null>(null);
   const [changeFilterSearchTerms, setChangeFilterSearchTerms] = useState<Record<string, string>>({});
   const [resourceGroupBy, setResourceGroupBy] = useState<'type' | 'resourceGroup'>('type');
+  const [showHealthDrilldown, setShowHealthDrilldown] = useState(false);
   
   // Saved views state
   const [saveViewDialogOpen, setSaveViewDialogOpen] = useState(false);
@@ -157,6 +163,8 @@ export default function DashboardPage() {
       setSecurityScore(null);
       setResourceHealth(null);
       setChangeAnalysis(null);
+      setOrphanData(null);
+      setShowOrphanCategory(null);
       return;
     }
     
@@ -294,63 +302,41 @@ export default function DashboardPage() {
     if (selectedSubscriptions.length === 0) {
       setPolicyCompliance(null);
       setSecurityScore(null);
+      setResourceHealth(null);
+      setOrphanData(null);
       return;
     }
 
+    // Snapshot subscriptions at call time — avoids stale closure reads in async continuations
+    const subs = [...selectedSubscriptions];
+
     try {
       setLoadingGovernance(true);
-      
-      // Fetch policy compliance, security score, resource health, and change analysis in parallel
+
+      // Fast governance calls — do NOT include orphan detection here
       const [policyResponse, securityResponse, healthResponse, changesResponse] = await Promise.all([
-        apiService.getPolicyCompliance(selectedSubscriptions).catch(err => {
+        apiService.getPolicyCompliance(subs).catch(err => {
           console.error('Failed to fetch policy compliance:', err);
           return null;
         }),
-        apiService.getSecurityScore(selectedSubscriptions).catch(err => {
+        apiService.getSecurityScore(subs).catch(err => {
           console.error('Failed to fetch security score:', err);
           return null;
         }),
-        apiService.getResourceHealth(selectedSubscriptions).catch(err => {
+        apiService.getResourceHealth(subs).catch(err => {
           console.error('Failed to fetch resource health:', err);
           return null;
         }),
-        apiService.getChangeAnalysis(selectedSubscriptions, 24).catch(err => {
+        apiService.getChangeAnalysis(subs, 24).catch(err => {
           console.error('Failed to fetch change analysis:', err);
           return null;
-        })
+        }),
       ]);
-      
-      // Handle policy compliance response
-      if (policyResponse) {
-        setPolicyCompliance(policyResponse);
-        console.log(' Policy Compliance:', policyResponse);
-      } else {
-        setPolicyCompliance(null);
-      }
-      
-      // Handle security score response
-      if (securityResponse) {
-        setSecurityScore(securityResponse);
-        console.log(' Security Score:', securityResponse);
-      } else {
-        setSecurityScore(null);
-      }
-      
-      // Handle resource health response
-      if (healthResponse) {
-        setResourceHealth(healthResponse);
-        console.log(' Resource Health:', healthResponse);
-      } else {
-        setResourceHealth(null);
-      }
 
-      // Handle change analysis response
-      if (changesResponse) {
-        setChangeAnalysis(changesResponse);
-        console.log(' Change Analysis:', changesResponse);
-      } else {
-        setChangeAnalysis(null);
-      }
+      if (policyResponse) setPolicyCompliance(policyResponse); else setPolicyCompliance(null);
+      if (securityResponse) setSecurityScore(securityResponse); else setSecurityScore(null);
+      if (healthResponse) setResourceHealth(healthResponse); else setResourceHealth(null);
+      if (changesResponse) setChangeAnalysis(changesResponse); else setChangeAnalysis(null);
     } catch (error) {
       console.error('Failed to fetch governance data:', error);
       setPolicyCompliance(null);
@@ -358,6 +344,31 @@ export default function DashboardPage() {
       setResourceHealth(null);
     } finally {
       setLoadingGovernance(false);
+    }
+
+    // Orphan detection is slow — fire separately, pass the same snapshot
+    fetchOrphanData(subs);
+  };
+
+  const fetchOrphanData = async (subs?: string[]) => {
+    const subscriptions = subs ?? selectedSubscriptions;
+    if (subscriptions.length === 0) {
+      setOrphanData(null);
+      return;
+    }
+    try {
+      setLoadingOrphan(true);
+      const orphanResponse = await apiService.getOrphanDetection(subscriptions);
+      if (orphanResponse?.success) {
+        setOrphanData(orphanResponse);
+      } else {
+        setOrphanData(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch orphan detection:', err);
+      setOrphanData(null);
+    } finally {
+      setLoadingOrphan(false);
     }
   };
 
@@ -769,7 +780,7 @@ export default function DashboardPage() {
                       </span>
                       <button
                         onClick={() => handleSubscriptionsChange(selectedSubscriptions.filter(id => id !== subId))}
-                        className="hover:text-blue-900 active:text-blue-950 flex-shrink-0 min-w-[20px] min-h-[20px] flex items-center justify-center"
+                        className="hover:text-indigo-900 active:text-indigo-950 flex-shrink-0 min-w-[20px] min-h-[20px] flex items-center justify-center"
                         aria-label="Remove"
                       >
                         ×
@@ -833,7 +844,7 @@ export default function DashboardPage() {
         </div>
       ) : loading ? (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-indigo-200 border-t-indigo-600 mx-auto"></div>
           <p className="mt-4 text-slate-600">Loading dashboard data...</p>
         </div>
       ) : resources.length === 0 ? (
@@ -844,7 +855,7 @@ export default function DashboardPage() {
         <div className="space-y-6">
           {/* Key Metrics - Top Row */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-sm transition-shadow">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Resources</h3>
                 <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
@@ -856,7 +867,7 @@ export default function DashboardPage() {
                 Across {selectedSubscriptions.length} subscription{selectedSubscriptions.length !== 1 ? 's' : ''}
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-sm transition-shadow">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Resource Types</h3>
                 <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
@@ -868,7 +879,7 @@ export default function DashboardPage() {
                 Different service types
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-sm transition-shadow">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Locations</h3>
                 <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
@@ -882,7 +893,7 @@ export default function DashboardPage() {
                 Azure regions in use
               </p>
             </div>
-            <div className="bg-white rounded-lg shadow-sm border border-slate-100 p-6 hover:shadow-sm transition-shadow">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tagged Resources</h3>
                 <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center">
@@ -906,20 +917,20 @@ export default function DashboardPage() {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                  <CurrencyDollarIcon className="h-5 w-5 text-blue-600" />
+                  <CurrencyDollarIcon className="h-5 w-5 text-indigo-600" />
                   Cost Overview
                 </h2>
                 <button
                   onClick={() => router.push('/costs')}
                   onMouseEnter={() => router.prefetch('/costs')}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
                 >
                   View Details →
                 </button>
               </div>
               {loadingCosts ? (
                 <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-200 border-t-indigo-600 mx-auto"></div>
                 </div>
               ) : costData ? (
                 <div className="space-y-4">
@@ -962,8 +973,8 @@ export default function DashboardPage() {
                     </div>
                   ) : (
                     <div className="flex items-center gap-2 text-sm">
-                      <ClockIcon className="h-4 w-4 text-blue-500" />
-                      <span className="text-blue-600 font-medium">
+                      <ClockIcon className="h-4 w-4 text-indigo-500" />
+                      <span className="text-indigo-600 font-medium">
                         Month-to-date costs for selected subscriptions
                       </span>
                     </div>
@@ -985,7 +996,7 @@ export default function DashboardPage() {
                   <button
                     onClick={() => router.push('/costs')}
                     onMouseEnter={() => router.prefetch('/costs')}
-                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-xs text-indigo-600 hover:text-indigo-700 font-medium"
                   >
                     View Details →
                   </button>
@@ -1003,7 +1014,7 @@ export default function DashboardPage() {
                         onClick={() => router.push('/costs')}
                         className="flex items-center gap-3 cursor-pointer hover:bg-slate-50 p-2 rounded-lg transition-colors"
                       >
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">
                           {index + 1}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1014,7 +1025,7 @@ export default function DashboardPage() {
                           <div className="flex items-center gap-2">
                             <div className="flex-1 bg-slate-200 rounded-full h-2">
                               <div 
-                                className="bg-gradient-to-r from-blue-500 to-purple-600 h-2 rounded-full transition-all duration-300"
+                                className="bg-indigo-500 h-2 rounded-full transition-all duration-300"
                                 style={{ width: `${percentage}%` }}
                               ></div>
                             </div>
@@ -1038,13 +1049,13 @@ export default function DashboardPage() {
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                  <ShieldCheckIcon className="h-5 w-5 text-blue-600" />
+                  <ShieldCheckIcon className="h-5 w-5 text-indigo-600" />
                   Policy Compliance
                 </h2>
               </div>
               {loadingGovernance ? (
                 <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-indigo-200 border-t-indigo-600 mx-auto"></div>
                 </div>
               ) : policyCompliance && typeof policyCompliance.overall_compliance_percentage === 'number' ? (
                 <div className="space-y-4">
@@ -1219,7 +1230,7 @@ export default function DashboardPage() {
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                           <div>
                             <p className="text-xs text-slate-600 mb-1">Resources</p>
-                            <p className="text-lg font-bold text-blue-600">{subResources.length}</p>
+                            <p className="text-lg font-bold text-indigo-600">{subResources.length}</p>
                           </div>
                           <div>
                             <p className="text-xs text-slate-600 mb-1">Cost (MTD)</p>
@@ -1262,21 +1273,11 @@ export default function DashboardPage() {
                   <div className="flex flex-col items-center mb-4">
                     <div className="relative w-32 h-32">
                       <svg className="transform -rotate-90 w-32 h-32">
+                        <circle cx="64" cy="64" r="56" stroke="#e5e7eb" strokeWidth="8" fill="none" />
                         <circle
-                          cx="64"
-                          cy="64"
-                          r="56"
-                          stroke="#e5e7eb"
-                          strokeWidth="8"
-                          fill="none"
-                        />
-                        <circle
-                          cx="64"
-                          cy="64"
-                          r="56"
+                          cx="64" cy="64" r="56"
                           stroke={resourceHealth.overall_health_percentage >= 90 ? '#10b981' : resourceHealth.overall_health_percentage >= 70 ? '#f59e0b' : '#ef4444'}
-                          strokeWidth="8"
-                          fill="none"
+                          strokeWidth="8" fill="none"
                           strokeDasharray={`${(resourceHealth.overall_health_percentage / 100) * 351.86} 351.86`}
                           strokeLinecap="round"
                         />
@@ -1297,31 +1298,72 @@ export default function DashboardPage() {
                         <p className="text-lg font-bold text-green-700">{resourceHealth.available}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 p-3 bg-red-50 rounded-lg">
-                      <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                    <button
+                      onClick={() => (resourceHealth.unavailable > 0) && setShowHealthDrilldown(v => !v)}
+                      className={`flex items-center gap-2 p-3 rounded-lg text-left w-full ${resourceHealth.unavailable > 0 ? 'bg-red-50 hover:bg-red-100 cursor-pointer' : 'bg-red-50 cursor-default'}`}
+                    >
+                      <div className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0"></div>
                       <div className="flex-1">
                         <p className="text-xs text-slate-600">Unavailable</p>
                         <p className="text-lg font-bold text-red-700">{resourceHealth.unavailable}</p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 p-3 bg-yellow-50 rounded-lg">
-                      <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                      {resourceHealth.unavailable > 0 && <ChevronDownIcon className="w-3 h-3 text-red-400 flex-shrink-0" />}
+                    </button>
+                    <button
+                      onClick={() => (resourceHealth.degraded > 0) && setShowHealthDrilldown(v => !v)}
+                      className={`flex items-center gap-2 p-3 rounded-lg text-left w-full ${resourceHealth.degraded > 0 ? 'bg-yellow-50 hover:bg-yellow-100 cursor-pointer' : 'bg-yellow-50 cursor-default'}`}
+                    >
+                      <div className="w-3 h-3 rounded-full bg-yellow-500 flex-shrink-0"></div>
                       <div className="flex-1">
                         <p className="text-xs text-slate-600">Degraded</p>
                         <p className="text-lg font-bold text-yellow-700">{resourceHealth.degraded}</p>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-lg">
-                      <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                      {resourceHealth.degraded > 0 && <ChevronDownIcon className="w-3 h-3 text-yellow-400 flex-shrink-0" />}
+                    </button>
+                    <button
+                      onClick={() => (resourceHealth.unknown > 0) && setShowHealthDrilldown(v => !v)}
+                      className={`flex items-center gap-2 p-3 rounded-lg text-left w-full ${resourceHealth.unknown > 0 ? 'bg-slate-50 hover:bg-slate-100 cursor-pointer' : 'bg-slate-50 cursor-default'}`}
+                    >
+                      <div className="w-3 h-3 rounded-full bg-slate-400 flex-shrink-0"></div>
                       <div className="flex-1">
                         <p className="text-xs text-slate-600">Unknown</p>
                         <p className="text-lg font-bold text-slate-700">{resourceHealth.unknown}</p>
                       </div>
-                    </div>
+                      {resourceHealth.unknown > 0 && <ChevronDownIcon className="w-3 h-3 text-slate-400 flex-shrink-0" />}
+                    </button>
                   </div>
                   <div className="text-center text-sm text-slate-500 pt-2 border-t border-slate-200">
                     {resourceHealth.total} resources monitored
                   </div>
+
+                  {/* Drilldown: non-healthy resources */}
+                  {showHealthDrilldown && resourceHealth.non_healthy_resources?.length > 0 && (
+                    <div className="mt-2 border-t border-slate-200 pt-3 space-y-2">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Non-Healthy Resources ({resourceHealth.non_healthy_resources.length})
+                      </p>
+                      <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
+                        {resourceHealth.non_healthy_resources.map((r: any, i: number) => {
+                          const stateColor =
+                            r.availability_state === 'Unavailable' ? 'bg-red-100 text-red-700' :
+                            r.availability_state === 'Degraded'    ? 'bg-yellow-100 text-yellow-700' :
+                                                                     'bg-slate-100 text-slate-600';
+                          return (
+                            <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-slate-50 border border-slate-100">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-slate-800 truncate">{r.resource_name}</p>
+                                <p className="text-[11px] text-slate-400 truncate">{r.resource_type}</p>
+                                {r.summary && <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{r.summary}</p>}
+                              </div>
+                              <span className={`flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${stateColor}`}>
+                                {r.availability_state}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : resourceHealth && resourceHealth.total === 0 && (
@@ -1341,15 +1383,15 @@ export default function DashboardPage() {
                     </p>
                     <ul className="text-xs text-slate-500 mt-3 space-y-1.5 text-left">
                       <li className="flex items-start gap-2">
-                        <span className="text-blue-500 mt-0.5">•</span>
+                        <span className="text-indigo-400 mt-0.5">•</span>
                         <span>Supported Azure resources (VMs, App Services, SQL DBs, etc.)</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-blue-500 mt-0.5">•</span>
+                        <span className="text-indigo-400 mt-0.5">•</span>
                         <span>Resources must have been running for some time</span>
                       </li>
                       <li className="flex items-start gap-2">
-                        <span className="text-blue-500 mt-0.5">•</span>
+                        <span className="text-indigo-400 mt-0.5">•</span>
                         <span>Reader permissions on Microsoft.ResourceHealth/*</span>
                       </li>
                     </ul>
@@ -1361,6 +1403,116 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+
+          {/* Orphan Resources Card */}
+          {(loadingOrphan || orphanData) && (
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                  <TrashIcon className="h-5 w-5 text-amber-500" />
+                  Orphan &amp; Idle Detection
+                </h2>
+                {loadingOrphan ? (
+                  <span className="text-xs text-slate-400 flex items-center gap-1.5">
+                    <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-amber-500 rounded-full animate-spin" />
+                    Scanning...
+                  </span>
+                ) : (
+                  <span className="text-xs font-semibold bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">
+                    {orphanData.total_orphans} found
+                  </span>
+                )}
+              </div>
+
+              {loadingOrphan ? (
+                <div className="space-y-2 animate-pulse">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="h-16 bg-slate-100 rounded-lg" />
+                    ))}
+                  </div>
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="h-9 bg-slate-100 rounded-lg" />
+                  ))}
+                </div>
+              ) : (<>
+
+              {/* Summary row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div className="text-center p-3 bg-red-50 rounded-lg">
+                  <p className="text-2xl font-bold text-red-600">{orphanData.by_group?.orphan ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Orphaned</p>
+                </div>
+                <div className="text-center p-3 bg-amber-50 rounded-lg">
+                  <p className="text-2xl font-bold text-amber-600">{orphanData.by_group?.stopped ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Stopped</p>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <p className="text-2xl font-bold text-orange-500">{orphanData.by_group?.idle ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Idle</p>
+                </div>
+                <div className="text-center p-3 bg-slate-50 rounded-lg">
+                  <p className="text-2xl font-bold text-slate-600">{orphanData.by_group?.hygiene ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Hygiene</p>
+                </div>
+              </div>
+
+              {/* Category rows */}
+              <div className="space-y-1.5">
+                {Object.entries(orphanData.categories as Record<string, any>)
+                  .filter(([, cat]) => cat.count > 0)
+                  .map(([key, cat]) => {
+                    const rowColor =
+                      cat.group === 'orphan'  ? 'border-red-100 hover:bg-red-50' :
+                      cat.group === 'stopped' ? 'border-amber-100 hover:bg-amber-50' :
+                      cat.group === 'idle'    ? 'border-orange-100 hover:bg-orange-50' :
+                                                'border-slate-100 hover:bg-slate-50';
+                    const badgeColor =
+                      cat.group === 'orphan'  ? 'bg-red-100 text-red-700' :
+                      cat.group === 'stopped' ? 'bg-amber-100 text-amber-700' :
+                      cat.group === 'idle'    ? 'bg-orange-100 text-orange-700' :
+                                                'bg-slate-100 text-slate-600';
+                    const isOpen = showOrphanCategory === key;
+                    return (
+                      <div key={key}>
+                        <button
+                          onClick={() => setShowOrphanCategory(isOpen ? null : key)}
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left transition-colors ${rowColor}`}
+                        >
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${badgeColor}`}>{cat.count}</span>
+                            <span className="text-sm text-slate-700 truncate">{cat.label}</span>
+                          </div>
+                          <ChevronDownIcon className={`w-3.5 h-3.5 text-slate-400 flex-shrink-0 ml-2 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isOpen && cat.items.length > 0 && (
+                          <div className="mt-1 mb-1 ml-2 max-h-52 overflow-y-auto space-y-1 pr-1">
+                            {cat.items.map((item: any, i: number) => (
+                              <div key={i} className="flex items-start gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
+                                <XCircleIcon className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-slate-800 truncate">{item.name}</p>
+                                  <p className="text-[11px] text-slate-400 truncate">{item.resourceGroup} · {item.location}</p>
+                                  <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{item.reason}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                {orphanData.total_orphans === 0 && (
+                  <div className="text-center py-6">
+                    <CheckCircleIcon className="h-10 w-10 text-green-400 mx-auto mb-2" />
+                    <p className="text-sm text-slate-500">No orphan or idle resources detected</p>
+                  </div>
+                )}
+              </div>
+              </>)}
+            </div>
+          )}
 
           {/* Location Distribution */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1407,13 +1559,13 @@ export default function DashboardPage() {
                 <div className="pt-4 border-t border-slate-200">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium text-slate-700">Tagging Compliance</span>
-                    <span className="text-lg font-bold text-blue-600">
+                    <span className="text-lg font-bold text-indigo-600">
                       {Math.round((resources.filter(r => r.tags && Object.keys(r.tags).length > 0).length / resources.length) * 100)}%
                     </span>
                   </div>
                   <div className="w-full bg-slate-200 rounded-full h-3">
                     <div 
-                      className="bg-gradient-to-r from-green-500 to-blue-500 h-3 rounded-full"
+                      className="bg-indigo-500 h-3 rounded-full"
                       style={{ width: `${(resources.filter(r => r.tags && Object.keys(r.tags).length > 0).length / resources.length) * 100}%` }}
                     ></div>
                   </div>
@@ -1550,7 +1702,7 @@ export default function DashboardPage() {
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-                <ClockIcon className="h-5 w-5 text-blue-600" />
+                <ClockIcon className="h-5 w-5 text-indigo-600" />
                 Change Analysis (Last 24 Hours)
               </h2>
               {changeAnalysis && changeAnalysis.total_changes > 0 && (
@@ -1573,7 +1725,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                   <div className="bg-indigo-50 rounded-lg p-4">
                     <p className="text-sm text-slate-600 mb-1">Total Changes</p>
-                    <p className="text-2xl font-bold text-blue-600">{changeAnalysis.total_changes}</p>
+                    <p className="text-2xl font-bold text-indigo-600">{changeAnalysis.total_changes}</p>
                   </div>
                   <div className="bg-green-50 rounded-lg p-4">
                     <p className="text-sm text-slate-600 mb-1">Most Common</p>
@@ -1687,7 +1839,7 @@ export default function DashboardPage() {
                                       e.stopPropagation();
                                       setActiveChangeFilterColumn(activeChangeFilterColumn === col.key ? null : col.key);
                                     }}
-                                    className={`p-0.5 rounded hover:bg-slate-200 transition-colors ${hasFilter ? 'text-blue-600' : 'text-slate-400'}`}
+                                    className={`p-0.5 rounded hover:bg-slate-200 transition-colors ${hasFilter ? 'text-indigo-600' : 'text-slate-400'}`}
                                     title="Filter column"
                                   >
                                     <FunnelIcon className="w-3 h-3" />
@@ -1716,7 +1868,7 @@ export default function DashboardPage() {
                                           const valuesToSelect = filterSearch ? filteredValues : uniqueVals;
                                           setChangeFilters({...changeFilters, [col.key]: new Set(valuesToSelect)});
                                         }}
-                                        className="flex-1 px-3 py-2.5 sm:px-2 sm:py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 active:bg-blue-100 rounded"
+                                        className="flex-1 px-3 py-2.5 sm:px-2 sm:py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50 active:bg-indigo-100 rounded"
                                       >
                                         Select {filterSearch ? 'Filtered' : 'All'}
                                       </button>
@@ -1762,7 +1914,7 @@ export default function DashboardPage() {
                                                   }
                                                   setChangeFilters(newFilters);
                                                 }}
-                                                className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-indigo-500 flex-shrink-0"
+                                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 flex-shrink-0"
                                               />
                                               <span className="truncate flex-1 text-sm" title={value}>{value}</span>
                                             </label>
@@ -1797,7 +1949,7 @@ export default function DashboardPage() {
                             const changeType = change.changeType || 'Unknown';
                             const changeTypeColor = changeType === 'Create' ? 'text-green-600 bg-green-50' : 
                                                     changeType === 'Delete' ? 'text-red-600 bg-red-50' : 
-                                                    'text-blue-600 bg-blue-50';
+                                                    'text-indigo-600 bg-indigo-50';
                             
                             return (
                               <tr key={idx} className="hover:bg-slate-50">

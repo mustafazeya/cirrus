@@ -996,6 +996,51 @@ async def get_resource_health(
             detail="Failed to get resource health"
         )
 
+@app.get("/api/governance/orphan-detection", tags=["Governance"])
+async def get_orphan_detection(
+    subscription_ids: str = Query(..., description="Comma-separated list of subscription IDs"),
+    snapshot_age_days: int = Query(30, description="Snapshots older than this many days are flagged"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Detect orphaned, stopped, and wasteful Azure resources across subscriptions"""
+    try:
+        sub_ids = [s.strip() for s in subscription_ids.split(",") if s.strip()]
+        if not sub_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one subscription ID is required"
+            )
+
+        from services.orphan_detection_service import orphan_detection_service
+
+        result = await orphan_detection_service.detect_orphans(
+            subscription_ids=sub_ids,
+            user_info=current_user,
+            snapshot_age_days=snapshot_age_days,
+        )
+
+        audit_service.log_event(
+            action=AuditActionType.GOVERNANCE_VIEW,
+            user_email=current_user.get('preferred_username') or current_user.get('email'),
+            details={
+                "resource_type": "orphan_detection",
+                "subscription_count": len(sub_ids),
+                "total_orphans": result.get("total_orphans", 0),
+            }
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to run orphan detection: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to run orphan detection"
+        )
+
+
 @app.get("/api/governance/change-analysis", tags=["Governance"])
 async def get_change_analysis(
     subscription_ids: str = Query(..., description="Comma-separated list of subscription IDs"),

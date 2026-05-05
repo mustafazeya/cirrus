@@ -209,20 +209,15 @@ class CacheService:
         
         try:
             if self.use_redis and self.redis_client:
-                # Use native async Redis call (no run_in_executor needed)
                 await self.redis_client.delete(cache_key)
-                
             else:
-                # Use memory cache
                 if cache_key in self.memory_cache:
                     del self.memory_cache[cache_key]
-                    
             return True
-            
         except Exception as e:
             logger.error(f"Cache delete error for key {cache_key}: {e}")
             return False
-    
+
     async def clear_user_cache(self, user_id: str) -> bool:
         """Clear all cached data for a user"""
         try:
