@@ -60,8 +60,8 @@ The system is strictly read-only. A query validator checks every natural languag
 ## Getting started
 
 ```bash
-git clone https://github.com/flysas-tech/platform-cloudex.git
-cd platform-cloudex
+git clone https://github.com/mustafazeya/cirrus.git
+cd cirrus
 ```
 
 **One-time setup — must be done before running `start-dev.sh`:**
