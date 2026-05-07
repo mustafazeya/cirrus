@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request, Query, Res
 from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 import logging
 from typing import List, Dict, Any, Optional
 import asyncio
@@ -3874,7 +3874,11 @@ class LogSearchRequest(BaseModel):
     groups: List[ConditionGroup]
     start_time: str
     end_time: str
-    limit: int = 200
+    limit: int = 1000
+
+    @validator('limit')
+    def clamp_limit(cls, v: int) -> int:
+        return max(1, min(v, 100_000))
 
 
 @app.post("/api/firewall/{subscription_id}/{resource_group}/{policy_name}/logs/search", tags=["Firewall"])
@@ -3905,7 +3909,11 @@ class KqlExecuteRequest(BaseModel):
     kql: str
     start_time: str
     end_time: str
-    limit: int = 500
+    limit: int = 5000
+
+    @validator('limit')
+    def clamp_limit(cls, v: int) -> int:
+        return max(1, min(v, 100_000))
 
 
 _KQL_JOB_TTL = settings.KQL_JOB_TTL  # sourced from config.py

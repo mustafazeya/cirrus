@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useMsal } from '@azure/msal-react';
 import {
   CodeBracketIcon,
@@ -405,10 +406,11 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
   type SortDir = 'asc' | 'desc';
   const [sortCol, setSortCol]         = useState<number | null>(null);
   const [sortDir, setSortDir]         = useState<SortDir>('asc');
-  const [colFilters, setColFilters]   = useState<Record<number, Set<string>>>({});
+  const [colFilters, setColFilters]   = useState<Record<number, Set<string>>>({})
   const [filterOpen, setFilterOpen]   = useState<number | null>(null);
   const [filterSearch, setFilterSearch] = useState('');
   const filterPanelRef = useRef<HTMLDivElement>(null);
+  const [kqlLimit, setKqlLimit] = useState(5000);
 
   // Close filter panel on outside click
   useEffect(() => {
@@ -467,6 +469,16 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
 
   const totalPages = Math.ceil(visibleRows.length / PAGE_SIZE);
   const pageRows   = visibleRows.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  // Virtual scroll for the KQL results table
+  const kqlScrollRef = useRef<HTMLDivElement>(null);
+  const KQL_ROW_HEIGHT = 30;
+  const kqlRowVirtualizer = useVirtualizer({
+    count: visibleRows.length,
+    getScrollElement: () => kqlScrollRef.current,
+    estimateSize: () => KQL_ROW_HEIGHT,
+    overscan: 25,
+  });
 
   const categories = useMemo(() => {
     const cats = Array.from(new Set(KQL_TEMPLATES.map((t) => t.category)));
@@ -559,7 +571,7 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
       const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ workspace_id: workspace, kql, start_time: start, end_time: end, limit: 5000 }),
+        body: JSON.stringify({ workspace_id: workspace, kql, start_time: start, end_time: end, limit: kqlLimit }),
         signal,
       });
 
@@ -820,10 +832,18 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
           onRun={runKql}
           height="180px"
         />
-        <p className="text-xs text-gray-400">Time range from picker is always applied · If your KQL also filters time, the shorter window wins · Up to 5 000 rows returned · Add <code className="font-mono">| take N</code> to override</p>
+        <p className="text-xs text-gray-400">Time range from picker is always applied · If your KQL also filters time, the shorter window wins · Add <code className="font-mono">| take N</code> in your query to override the row limit · LA enforces a 64 MB response cap (~90k rows)</p>
 
         {/* Actions */}
         <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Max rows:</span>
+          <select
+            value={kqlLimit}
+            onChange={e => setKqlLimit(Number(e.target.value))}
+            className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          >
+            {[1000, 2000, 5000, 10000, 25000, 50000, 100000].map(n => <option key={n} value={n}>{n.toLocaleString()}</option>)}
+          </select>
           {kql && (
             <button onClick={() => setKql('')} className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600">
               <XMarkIcon className="w-3.5 h-3.5" /> Clear
@@ -947,9 +967,13 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
                 )}
               </div>
               {result.rows.length > 0 && (
-                <div className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200 min-h-[500px] max-h-[600px]">
+                <div
+                  ref={kqlScrollRef}
+                  className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200"
+                  style={{ height: '600px' }}
+                >
                   <table className="text-xs border-collapse min-w-full">
-                    <thead className="bg-gray-50 border-b border-gray-200">
+                    <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                       <tr>
                         {result.columns.map((col, idx) => {
                           const checkedSet   = colFilters[idx] ?? new Set<string>();
@@ -1048,30 +1072,33 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
                         })}
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {pageRows.map((row, i) => (
-                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                          {(row as unknown[]).map((cell, j) => (
-                            <td key={j} className="px-3 py-1.5 text-gray-700 whitespace-nowrap max-w-xs overflow-hidden text-ellipsis" title={String(cell ?? '')}>
-                              {String(cell ?? '')}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
+                    <tbody>
+                      {(() => {
+                        const vItems = kqlRowVirtualizer.getVirtualItems();
+                        const paddingTop    = vItems.length > 0 ? vItems[0].start : 0;
+                        const paddingBottom = vItems.length > 0 ? kqlRowVirtualizer.getTotalSize() - vItems[vItems.length - 1].end : 0;
+                        const colCount = result?.columns?.length ?? 1;
+                        return (
+                          <>
+                            {paddingTop > 0 && <tr><td style={{ height: paddingTop }} colSpan={colCount} /></tr>}
+                            {vItems.map((virtualRow) => {
+                              const row = visibleRows[virtualRow.index] as unknown[];
+                              return (
+                                <tr key={virtualRow.index} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
+                                  {row.map((cell, j) => (
+                                    <td key={j} className="px-3 py-1.5 text-gray-700 whitespace-nowrap max-w-xs overflow-hidden text-ellipsis" title={String(cell ?? '')}>
+                                      {String(cell ?? '')}
+                                    </td>
+                                  ))}
+                                </tr>
+                              );
+                            })}
+                            {paddingBottom > 0 && <tr><td style={{ height: paddingBottom }} colSpan={colCount} /></tr>}
+                          </>
+                        );
+                      })()}
                     </tbody>
                   </table>
-                </div>
-              )}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between px-1 text-xs text-gray-500">
-                  <span>Rows {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, visibleRows.length)} of {visibleRows.length.toLocaleString()}</span>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => setPage(0)} disabled={page === 0} className="px-2 py-1 rounded border border-gray-200 disabled:opacity-30 hover:bg-gray-50">«</button>
-                    <button onClick={() => setPage((p) => p - 1)} disabled={page === 0} className="px-2 py-1 rounded border border-gray-200 disabled:opacity-30 hover:bg-gray-50">‹</button>
-                    <span className="px-2">Page {page + 1} / {totalPages}</span>
-                    <button onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages - 1} className="px-2 py-1 rounded border border-gray-200 disabled:opacity-30 hover:bg-gray-50">›</button>
-                    <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1} className="px-2 py-1 rounded border border-gray-200 disabled:opacity-30 hover:bg-gray-50">»</button>
-                  </div>
                 </div>
               )}
             </>

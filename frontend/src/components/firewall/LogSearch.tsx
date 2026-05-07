@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   MagnifyingGlassIcon,
   PlusIcon,
@@ -519,6 +520,16 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result]);
 
+  // Virtual scroll container ref — used by the row virtualizer
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const ROW_HEIGHT = 30; // px — must match actual row height (py-1.5 + text-xs)
+  const rowVirtualizer = useVirtualizer({
+    count: visibleEntries.length,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 25,
+  });
+
   const onResizeStart = useCallback((key: string, e: React.MouseEvent) => {
     e.preventDefault();
     const startX = e.clientX;
@@ -640,7 +651,7 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
               onChange={(e) => onLimitChange(Number(e.target.value))}
               className="text-xs border border-gray-300 rounded-lg px-2 py-1 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             >
-              {[50, 100, 200, 500, 1000, 2000, 5000].map((n) => <option key={n} value={n}>{n}</option>)}
+              {[200, 500, 1000, 2000, 5000, 10000, 25000, 50000, 100000].map((n) => <option key={n} value={n}>{n.toLocaleString()}</option>)}
             </select>
           </div>
         </div>
@@ -876,6 +887,9 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
             <span className="font-normal text-xs ml-1">
               ({new Date(result.start_time).toLocaleString('sv', { timeZone: 'UTC', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} → {new Date(result.end_time).toLocaleString('sv', { timeZone: 'UTC', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })} UTC)
             </span>
+            {result.total !== visibleEntries.length && (
+              <span className="text-xs font-normal text-blue-600">(filtered to {visibleEntries.length.toLocaleString()})</span>
+            )}
             {result.entries.length > 0 && (
               <button
                 onClick={() => {
@@ -909,12 +923,16 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
           </div>
 
           {result.entries.length > 0 && (
-            <div className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200 min-h-[500px] max-h-[600px]">
+            <div
+              ref={tableScrollRef}
+              className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200"
+              style={{ height: '600px' }}
+            >
               <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', width: COLS.reduce((s, c) => s + colWidths[c.key], 0) }}>
                 <colgroup>
                   {COLS.map((c) => <col key={c.key} style={{ width: colWidths[c.key] }} />)}
                 </colgroup>
-                <thead className="bg-gray-50 border-b border-gray-200">
+                <thead className="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
                   <tr className="text-gray-500 text-left">
                     {COLS.map((c) => {
                       const checkedSet   = colFilters[c.key] ?? new Set<string>();
@@ -1039,27 +1057,41 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                     })}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {visibleEntries.map((entry, i) => (
-                    <tr key={i} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-3 py-1.5 font-mono whitespace-nowrap text-gray-500 overflow-hidden text-ellipsis">
-                        {new Date(entry.TimeGenerated).toLocaleString('sv', { timeZone: 'UTC', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </td>
-                      <td className="px-3 py-1.5 overflow-hidden">
-                        <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[entry.Action] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {entry.Action}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{entry.RuleType}</td>
-                      <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.SourceIp}>{entry.SourceIp || '—'}</td>
-                      <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.DestinationIp || entry.TargetUrl}>{entry.DestinationIp || entry.TargetUrl || '—'}</td>
-                      <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap">{entry.DestinationPort || '—'}</td>
-                      <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap">{entry.Protocol || '—'}</td>
-                      <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.Rule}>{entry.Rule || '—'}</td>
-                      <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollection}>{entry.RuleCollection || '—'}</td>
-                      <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollectionGroup}>{entry.RuleCollectionGroup || '—'}</td>
-                    </tr>
-                  ))}
+                <tbody>
+                  {(() => {
+                    const vItems = rowVirtualizer.getVirtualItems();
+                    const paddingTop    = vItems.length > 0 ? vItems[0].start : 0;
+                    const paddingBottom = vItems.length > 0 ? rowVirtualizer.getTotalSize() - vItems[vItems.length - 1].end : 0;
+                    return (
+                      <>
+                        {paddingTop > 0 && <tr><td style={{ height: paddingTop }} colSpan={COLS.length} /></tr>}
+                        {vItems.map((virtualRow) => {
+                          const entry = visibleEntries[virtualRow.index];
+                          return (
+                            <tr key={virtualRow.index} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
+                              <td className="px-3 py-1.5 font-mono whitespace-nowrap text-gray-500 overflow-hidden text-ellipsis">
+                                {new Date(entry.TimeGenerated).toLocaleString('sv', { timeZone: 'UTC', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </td>
+                              <td className="px-3 py-1.5 overflow-hidden">
+                                <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[entry.Action] ?? 'bg-gray-100 text-gray-600'}`}>
+                                  {entry.Action}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{entry.RuleType}</td>
+                              <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.SourceIp}>{entry.SourceIp || '—'}</td>
+                              <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.DestinationIp || entry.TargetUrl}>{entry.DestinationIp || entry.TargetUrl || '—'}</td>
+                              <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap">{entry.DestinationPort || '—'}</td>
+                              <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap">{entry.Protocol || '—'}</td>
+                              <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.Rule}>{entry.Rule || '—'}</td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollection}>{entry.RuleCollection || '—'}</td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollectionGroup}>{entry.RuleCollectionGroup || '—'}</td>
+                            </tr>
+                          );
+                        })}
+                        {paddingBottom > 0 && <tr><td style={{ height: paddingBottom }} colSpan={COLS.length} /></tr>}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
