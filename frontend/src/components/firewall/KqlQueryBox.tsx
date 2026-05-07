@@ -410,6 +410,18 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
   const [filterSearch, setFilterSearch] = useState('');
   const filterPanelRef = useRef<HTMLDivElement>(null);
 
+  // Close filter panel on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setFilterOpen(null);
+        setFilterSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
   const toggleSort = (idx: number) => {
     if (sortCol === idx) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortCol(idx); setSortDir('asc'); }
@@ -935,7 +947,7 @@ export default function KqlQueryBox({ ctx, workspace, startTime, endTime, active
                 )}
               </div>
               {result.rows.length > 0 && (
-                <div className="overflow-x-auto rounded-xl border border-gray-200">
+                <div className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200 min-h-[500px] max-h-[600px]">
                   <table className="text-xs border-collapse min-w-full">
                     <thead className="bg-gray-50 border-b border-gray-200">
                       <tr>

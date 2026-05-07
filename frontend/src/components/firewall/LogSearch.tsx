@@ -85,14 +85,39 @@ const OPERATORS = [
   { value: 'ends_with',    label: 'ends with' },
 ];
 
-const IP_FIELDS = new Set(['source_ip', 'dest_ip']);
+const IP_FIELDS       = new Set(['source_ip', 'dest_ip']);
+const FQDN_FIELDS     = new Set(['dest_fqdn']);
+const PORT_FIELDS     = new Set(['dest_port']);
 const DROPDOWN_FIELDS = new Set(['protocol', 'action', 'type']);
-const IP_OPERATORS     = OPERATORS.filter(o => ['equals','not_equals','starts_with','ends_with'].includes(o.value));
+const IP_OPERATORS: { value: string; label: string }[] = [
+  { value: 'matches',     label: 'matches' },
+  { value: 'is_exactly',  label: 'is exactly' },
+  { value: 'matches_in',  label: 'matches in' },
+  { value: 'exactly_in',  label: 'exactly in' },
+  { value: 'starts_with', label: 'starts with' },
+  { value: 'ends_with',   label: 'ends with' },
+];
+const FQDN_OPERATORS: { value: string; label: string }[] = [
+  { value: 'contains',     label: 'contains' },
+  { value: 'not_contains', label: 'does not contain' },
+  { value: 'equals',       label: 'equals' },
+  { value: 'exactly_in',   label: 'exactly in' },
+  { value: 'starts_with',  label: 'starts with' },
+  { value: 'ends_with',    label: 'ends with' },
+];
+const PORT_OPERATORS: { value: string; label: string }[] = [
+  { value: 'equals',      label: 'equals' },
+  { value: 'not_equals',  label: 'not equals' },
+  { value: 'contains',    label: 'contains' },
+  { value: 'exactly_in',  label: 'exactly in' },
+];
 const DROPDOWN_OPERATORS = OPERATORS.filter(o => ['equals','not_equals'].includes(o.value));
 
 function operatorsFor(field: string) {
   if (DROPDOWN_FIELDS.has(field)) return DROPDOWN_OPERATORS;
   if (IP_FIELDS.has(field))       return IP_OPERATORS;
+  if (FQDN_FIELDS.has(field))     return FQDN_OPERATORS;
+  if (PORT_FIELDS.has(field))     return PORT_OPERATORS;
   return OPERATORS;
 }
 
@@ -135,6 +160,86 @@ function resolvePresetWindow(label: string): { start: string; end: string } | nu
   return presets().find(p => p.label === label) ?? null;
 }
 
+
+const IN_OPERATORS = new Set(['matches_in', 'exactly_in']);
+
+/** Bubble/tag input — value stored as comma-separated string */
+function TagInput({ value, onChange, placeholder, onSubmit, operator }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  onSubmit?: () => void;
+  operator?: string;
+}) {
+  const [draft, setDraft]           = useState('');
+  const [pendingDelete, setPending] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const tags = value ? value.split(',').map(t => t.trim()).filter(Boolean) : [];
+
+  const isMatchesIn = operator === 'matches_in';
+  const pillCls = isMatchesIn
+    ? 'bg-violet-50 text-violet-700 ring-1 ring-violet-200'
+    : 'bg-blue-50 text-blue-700 ring-1 ring-blue-200';
+
+  const addTag = (raw: string) => {
+    const t = raw.trim();
+    if (!t || tags.includes(t)) { setDraft(''); return; }
+    onChange([...tags, t].join(', '));
+    setDraft('');
+    setPending(false);
+  };
+
+  const removeTag = (idx: number) => {
+    onChange(tags.filter((_, i) => i !== idx).join(', '));
+    setPending(false);
+    inputRef.current?.focus();
+  };
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1 flex-1 min-w-[160px] min-h-[34px] px-2 py-1.5 border border-gray-300 rounded-lg bg-white focus-within:border-indigo-400 focus-within:ring-1 focus-within:ring-indigo-300 cursor-text transition-colors"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {tags.map((tag, i) => (
+        <span
+          key={i}
+          className={`inline-flex items-center gap-1 text-[11px] font-mono font-medium rounded px-1.5 py-[2px] ${pillCls} ${i === tags.length - 1 && pendingDelete ? 'ring-red-400 bg-red-50 text-red-600' : ''}`}
+        >
+          {tag}
+          <button
+            type="button"
+            onMouseDown={e => { e.preventDefault(); removeTag(i); }}
+            tabIndex={-1}
+            className="opacity-40 hover:opacity-100 transition-opacity"
+          >
+            <XMarkIcon className="w-2.5 h-2.5" />
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        placeholder={tags.length === 0 ? (placeholder ?? 'e.g. 10.0.0.1, 192.168.0.0/24') : ''}
+        onChange={e => { setDraft(e.target.value); setPending(false); }}
+        onKeyDown={e => {
+          if ((e.key === 'Enter' || e.key === ',') && draft.trim()) {
+            e.preventDefault(); addTag(draft);
+          } else if (e.key === 'Enter' && !draft && onSubmit) {
+            e.preventDefault(); onSubmit();
+          } else if (e.key === 'Backspace' && !draft && tags.length > 0) {
+            if (pendingDelete) removeTag(tags.length - 1);
+            else setPending(true);
+          } else {
+            setPending(false);
+          }
+        }}
+        onBlur={() => { addTag(draft); setPending(false); }}
+        className="flex-1 min-w-[80px] text-sm outline-none bg-transparent placeholder:text-gray-400 placeholder:text-xs"
+      />
+    </div>
+  );
+}
 
 export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, loading, result, workspace, groups, startTime, endTime, limit, activePreset, onWorkspaceChange, onGroupsChange, onStartTimeChange, onEndTimeChange, onLimitChange, onActivePresetChange }: Props) {
   const [showCustom, setShowCustom] = useState(false);
@@ -342,7 +447,7 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
   const filterPanelRef = useRef<HTMLDivElement>(null);
 
   // Close filter panel on outside click
-  useCallback(() => {
+  useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
         setFilterOpen(null);
@@ -579,14 +684,14 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                     }
                     <select value={cond.field} onChange={e => {
                         const f = e.target.value;
-                        const op = !operatorsFor(f).find(o => o.value === cond.operator) ? 'equals' : cond.operator;
+                        const ops = operatorsFor(f); const op = ops.find(o => o.value === cond.operator) ? cond.operator : ops[0].value;
                         updateCond(group.id, cond.id, { field: f, value: '', operator: op });
                       }}
                       className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                       {LOG_FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
                     </select>
                     <select value={cond.operator} onChange={e => updateCond(group.id, cond.id, { operator: e.target.value })}
-                      className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                      className="text-sm min-w-[140px] border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                       {operatorsFor(cond.field).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                     {VALUE_HINTS[cond.field] ? (
@@ -595,8 +700,16 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                         <option value="">— select —</option>
                         {VALUE_HINTS[cond.field].map(v => <option key={v} value={v}>{v}</option>)}
                       </select>
+                    ) : IN_OPERATORS.has(cond.operator) ? (
+                      <TagInput
+                        value={cond.value}
+                        onChange={v => updateCond(group.id, cond.id, { value: v })}
+                        placeholder={logFieldPlaceholder(cond.field, cond.operator)}
+                        onSubmit={canSearch ? submit : undefined}
+                        operator={cond.operator}
+                      />
                     ) : (
-                      <input type="text" placeholder={logFieldPlaceholder(cond.field)} value={cond.value}
+                      <input type="text" placeholder={logFieldPlaceholder(cond.field, cond.operator)} value={cond.value}
                         onChange={e => updateCond(group.id, cond.id, { value: e.target.value })}
                         onKeyDown={e => e.key === 'Enter' && canSearch && submit()}
                         className="flex-1 min-w-[160px] text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
@@ -796,7 +909,7 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
           </div>
 
           {result.entries.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <div className="overflow-x-auto overflow-y-auto rounded-xl border border-gray-200 min-h-[500px] max-h-[600px]">
               <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', width: COLS.reduce((s, c) => s + colWidths[c.key], 0) }}>
                 <colgroup>
                   {COLS.map((c) => <col key={c.key} style={{ width: colWidths[c.key] }} />)}
@@ -958,7 +1071,16 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
   );
 }
 
-function logFieldPlaceholder(field: string): string {
+function logFieldPlaceholder(field: string, operator?: string): string {
+  if (operator === 'matches_in') {
+    if (field === 'source_ip' || field === 'dest_ip')
+      return 'e.g. 10.0.0.1, 192.168.0.0/24, 10.33.5.2';
+  }
+  if (operator === 'exactly_in') {
+    if (field === 'source_ip' || field === 'dest_ip') return 'e.g. 10.0.0.1, 52.239.0.1';
+    if (field === 'dest_fqdn')  return 'e.g. *.microsoft.com, api.github.com';
+    if (field === 'dest_port')  return 'e.g. 80, 443, 8080';
+  }
   const map: Record<string, string> = {
     source_ip:       'e.g. 10.33.5.1',
     dest_ip:         'e.g. 52.239.0.1',

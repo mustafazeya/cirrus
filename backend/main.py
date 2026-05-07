@@ -3628,10 +3628,13 @@ async def fw_get_diagnostic_info(
 
 
 @app.get("/api/firewall/subscriptions", tags=["Firewall"])
-async def fw_list_subscriptions(_: dict = Depends(get_network_user)):
+async def fw_list_subscriptions(
+    has_policies: bool = Query(False, description="When true, only return subscriptions that have at least one firewall policy"),
+    _: dict = Depends(get_network_user),
+):
     """List all subscriptions visible to the service principal."""
     try:
-        subs = await firewall_service.list_subscriptions()
+        subs = await firewall_service.list_subscriptions(has_policies=has_policies)
         return {"subscriptions": subs}
     except Exception as e:
         logger.error(f"Firewall – list subscriptions failed: {e}")

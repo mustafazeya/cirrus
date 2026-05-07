@@ -280,12 +280,17 @@ class FirewallService:
     # subscription / firewall discovery
     # ------------------------------------------------------------------
 
-    async def list_subscriptions(self) -> List[Dict]:
-        """List all accessible subscriptions via the service principal."""
+    async def list_subscriptions(self, has_policies: bool = False) -> List[Dict]:
+        """List all accessible subscriptions via the service principal.
+
+        Args:
+            has_policies: When True, only return subscriptions that contain at
+                          least one Azure Firewall Policy resource.
+        """
         token = await asyncio.to_thread(self._get_sp_token)
         url = f"{_MANAGEMENT_API}/subscriptions?api-version=2022-12-01"
         subs = await asyncio.to_thread(_sync_get_paginated, url, token)
-        return [
+        all_subs = [
             {
                 "subscription_id": s.get("subscriptionId"),
                 "display_name": s.get("displayName"),
@@ -293,6 +298,57 @@ class FirewallService:
             }
             for s in subs
         ]
+
+        if not has_policies:
+            return all_subs
+
+        # Use Azure Resource Graph to find subscription IDs that have at least
+        # one Microsoft.Network/firewallPolicies resource.
+        arg_url = f"{_MANAGEMENT_API}/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01"
+        arg_body = {
+            "query": (
+                "Resources "
+                "| where type =~ 'microsoft.network/firewallpolicies' "
+                "| distinct subscriptionId"
+            )
+        }
+        try:
+            resp = await asyncio.to_thread(
+                requests.post,
+                arg_url,
+                json=arg_body,
+                headers=_make_headers(token),
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            raw = data.get("data", {})
+            policy_sub_ids: set = set()
+            if isinstance(raw, list):
+                # data is a list of dicts, each with a "subscriptionId" key
+                policy_sub_ids = {
+                    row.get("subscriptionId", "").lower()
+                    for row in raw
+                    if isinstance(row, dict)
+                }
+            elif isinstance(raw, dict):
+                # data has {"columns": [...], "rows": [[val, ...], ...]}
+                columns = [c.get("name") for c in raw.get("columns", [])]
+                try:
+                    sub_col_idx = columns.index("subscriptionId")
+                except ValueError:
+                    sub_col_idx = None
+                if sub_col_idx is not None:
+                    policy_sub_ids = {
+                        row[sub_col_idx].lower()
+                        for row in raw.get("rows", [])
+                        if isinstance(row, list) and len(row) > sub_col_idx
+                    }
+        except Exception as exc:
+            logger.warning("ARG query for subscriptions-with-policies failed: %s – returning all subs", exc)
+            return all_subs
+
+        return [s for s in all_subs if (s["subscription_id"] or "").lower() in policy_sub_ids]
 
     async def list_firewalls(self, subscription_id: str) -> List[Dict]:
         """List Azure Firewalls in a subscription."""
@@ -636,6 +692,12 @@ class FirewallService:
             def _positive_match(fv: str) -> bool:
                 fvl = fv.lower()
                 if is_addr_field:
+                    if op == "is_exactly":
+                        # bare IP and /32 are identical
+                        v_norm = v[:-3] if v.endswith('/32') else v
+                        fvl_norm = fvl[:-3] if fvl.endswith('/32') else fvl
+                        return fvl_norm == v_norm
+                    # 'matches' and 'equals' both do subnet-aware matching
                     if v in fvl or fvl == v:
                         return True
                     try:
@@ -657,7 +719,15 @@ class FirewallService:
                     return fvl.endswith(v)
                 return fvl == v
 
-            if op in ("contains", "equals"):
+            if op in ("matches_in", "exactly_in"):
+                items = [i.strip() for i in value.split(',') if i.strip()]
+                for item in items:
+                    item_op = "is_exactly" if op == "exactly_in" else "matches"
+                    if _apply_operator(values, item_op, item, field):
+                        return True
+                return False
+
+            if op in ("contains", "equals", "matches", "is_exactly"):
                 for fv in values:
                     if _positive_match(fv):
                         return True
@@ -1888,8 +1958,20 @@ union isfuzzy=true
             op = operator.lower()
             # CIDR value on an IP column → use ipv4_is_in_range instead of string equality
             is_cidr = "/" in v_safe and col in IP_COLS
-            if op == "equals":
+            if op in ("matches_in", "exactly_in"):
+                items = [i.strip().replace('"', '') for i in value.split(',') if i.strip()]
+                item_op = "is_exactly" if op == "exactly_in" else "matches"
+                clauses = [_kql_op(col, item_op, item) for item in items]
+                return '(' + ' or '.join(clauses) + ')' if clauses else '(1==0)'
+
+            if op in ("equals", "matches"):
                 return f'ipv4_is_in_range({col}, "{v_safe}")' if is_cidr else f'{col} =~ "{v_safe}"'
+            if op == "is_exactly":
+                # /32 and bare IP are the same host
+                if col in IP_COLS:
+                    bare = v_safe[:-3] if v_safe.endswith('/32') else v_safe
+                    return f'({col} == "{bare}" or {col} == "{bare}/32")'
+                return f'{col} == "{v_safe}"'
             if op == "not_equals":
                 return f'not(ipv4_is_in_range({col}, "{v_safe}"))' if is_cidr else f'{col} !~ "{v_safe}"'
             if op == "contains":      return f'{col} contains "{v_safe}"'

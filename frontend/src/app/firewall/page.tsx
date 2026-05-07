@@ -415,7 +415,10 @@ function ContextSelector({ onSelect }: { onSelect: (ctx: FirewallContext) => voi
 
         {/* Searchable Subscription Selector */}
         <div className="relative">
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Subscription</label>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-sm font-medium text-gray-700">Subscription</label>
+            <span className="text-xs text-gray-400 italic">Only subscriptions with a firewall policy are shown</span>
+          </div>
           <button
             type="button"
             className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm bg-white text-left flex items-center justify-between focus:ring-2 focus:ring-indigo-500 focus:outline-none transition-colors hover:border-indigo-300"

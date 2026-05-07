@@ -800,8 +800,10 @@ class ApiService {
 
   // ── Azure Firewall Analysis ────────────────────────────────────────────────
 
-  async firewallListSubscriptions(): Promise<{ subscriptions: FirewallSubscription[] }> {
-    const response = await this.client.get('/api/firewall/subscriptions');
+  async firewallListSubscriptions(hasPolicies = true): Promise<{ subscriptions: FirewallSubscription[] }> {
+    const response = await this.client.get('/api/firewall/subscriptions', {
+      params: hasPolicies ? { has_policies: true } : undefined,
+    });
     return response.data;
   }
 
