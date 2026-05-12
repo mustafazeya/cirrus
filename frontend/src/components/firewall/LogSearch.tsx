@@ -300,8 +300,6 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
   const flushTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Virtual scrolling for live stream
-  // Note: Virtualizer uses liveEntries.length for stable scrollbar sizing
-  // Actual rendering uses visibleLiveEntries (filtered/sorted) with safety check
   const liveScrollRef = useRef<HTMLDivElement>(null);
   const LIVE_ROW_HEIGHT = 30;
   const liveRowVirtualizer = useVirtualizer({
@@ -472,10 +470,7 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
           intra_connector: g.intraConnector,
           inter_connector: g.interConnector,
         })),
-      };flushTimerRef.current) {
-      clearTimeout(flushTimerRef.current);
-    }
-    if (
+      };
       wsRef.current.send(JSON.stringify({ filters }));
       console.log('[Stream] Filters updated:', filters);
     }
@@ -594,12 +589,24 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
   const [filterSearch, setFilterSearch] = useState<string>('');
   const filterPanelRef = useRef<HTMLDivElement>(null);
 
-  // Close filter panel on outside click
+  // Sort & column filter state (for live stream)
+  const [liveSortCol, setLiveSortCol]         = useState<string>('time');
+  const [liveSortDir, setLiveSortDir]         = useState<SortDir>('asc'); // Default ascending for streaming
+  const [liveColFilters, setLiveColFilters]   = useState<Record<string, Set<string>>>({});
+  const [liveFilterOpen, setLiveFilterOpen]   = useState<string | null>(null);
+  const [liveFilterSearch, setLiveFilterSearch] = useState<string>('');
+  const liveFilterPanelRef = useRef<HTMLDivElement>(null);
+
+  // Close filter panels on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
         setFilterOpen(null);
         setFilterSearch('');
+      }
+      if (liveFilterPanelRef.current && !liveFilterPanelRef.current.contains(e.target as Node)) {
+        setLiveFilterOpen(null);
+        setLiveFilterSearch('');
       }
     };
     document.addEventListener('mousedown', handler);
@@ -635,6 +642,55 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
   const clearColFilter = (colKey: string) => {
     setColFilters((prev) => { const n = { ...prev }; delete n[colKey]; return n; });
   };
+
+  // Live stream sort & filter functions
+  const toggleLiveSort = (key: string) => {
+    if (liveSortCol === key) setLiveSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setLiveSortCol(key); setLiveSortDir('asc'); }
+  };
+
+  const toggleLiveFilterValue = (colKey: string, val: string) => {
+    setLiveColFilters((prev) => {
+      const next = new Set(prev[colKey] ?? []);
+      if (next.has(val)) next.delete(val); else next.add(val);
+      return { ...prev, [colKey]: next };
+    });
+  };
+
+  const clearLiveColFilter = (colKey: string) => {
+    setLiveColFilters((prev) => { const n = { ...prev }; delete n[colKey]; return n; });
+  };
+
+  // Filtered and sorted live entries
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const visibleLiveEntries = useMemo(() => {
+    let rows = liveEntries.slice();
+    for (const [key, checked] of Object.entries(liveColFilters)) {
+      if (!checked.size) continue;
+      const getter = COL_FIELD[key];
+      rows = rows.filter((e) => checked.has(getter(e)));
+    }
+    const getter = COL_FIELD[liveSortCol];
+    rows.sort((a, b) => {
+      const av = getter(a), bv = getter(b);
+      return liveSortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    });
+    return rows;
+  }, [liveEntries, liveColFilters, liveSortCol, liveSortDir]);
+
+  // Pre-compute unique values per column for live stream
+  const liveColUniqueVals = useMemo<Record<string, string[]>>(() => {
+    if (liveEntries.length === 0) return {};
+    return Object.fromEntries(
+      LIVE_COLS.map((c) => [
+        c.key,
+        Array.from(new Set(liveEntries.map(COL_FIELD[c.key])))
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b)),
+      ])
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveEntries]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const visibleEntries = useMemo(() => {
@@ -948,17 +1004,50 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
               Live Stream {!liveMode && '(Stopped)'}
             </span>
             <span className="text-xs font-normal text-emerald-600">
-              {liveEntries.length.toLocaleString()} / {limit.toLocaleString()} entries · real-time stream (Azure batches every ~60s)
+              {visibleLiveEntries.length.toLocaleString()} / {liveEntries.length.toLocaleString()} displayed · {limit.toLocaleString()} limit · real-time stream
             </span>
             {liveLoading && (
               <span className="text-xs text-emerald-500 italic">Connecting…</span>
             )}
-            <button
-              onClick={() => { setLiveEntries([]); seenKeysRef.current.clear(); }}
-              className="ml-auto text-xs text-emerald-700 hover:text-emerald-900 border border-emerald-300 rounded px-2 py-0.5 hover:bg-emerald-100 transition-colors"
-            >
-              Clear
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {liveEntries.length > 0 && (
+                <button
+                  onClick={() => {
+                    const headers = ['Time', 'Action', 'Type', 'Source', 'Destination', 'Port', 'Protocol', 'Rule', 'Collection', 'Collection Group'];
+                    const rows = visibleLiveEntries.map((e) => [
+                      e.TimeGenerated,
+                      e.Action,
+                      e.RuleType,
+                      e.SourceIp,
+                      e.DestinationIp || e.TargetUrl,
+                      e.DestinationPort,
+                      e.Protocol,
+                      e.Rule,
+                      e.RuleCollection,
+                      e.RuleCollectionGroup,
+                    ]);
+                    const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `firewall-livestream-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs border border-emerald-300 bg-white text-emerald-700 rounded-lg hover:bg-emerald-50 transition-colors font-medium"
+                >
+                  <ArrowDownTrayIcon className="w-3.5 h-3.5" />
+                  Export CSV
+                </button>
+              )}
+              <button
+                onClick={() => { setLiveEntries([]); seenKeysRef.current.clear(); }}
+                className="text-xs text-emerald-700 hover:text-emerald-900 border border-emerald-300 rounded px-2 py-0.5 hover:bg-emerald-100 transition-colors"
+              >
+                Clear
+              </button>
+            </div>
           </div>
 
           {liveEntries.length === 0 && !liveLoading && (
@@ -982,21 +1071,119 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                 </colgroup>
                 <thead className="bg-emerald-50 border-b border-emerald-200 sticky top-0 z-10">
                   <tr className="text-emerald-700 text-left">
-                    {LIVE_COLS.map((c) => (
-                      <th
-                        key={c.key}
-                        className="px-3 py-0 whitespace-nowrap select-none relative group"
-                        style={{ width: liveColWidths[c.key] }}
-                      >
-                        <div className="flex items-center py-2 font-medium text-xs">{c.label}</div>
-                        <span
-                          onMouseDown={(e) => onLiveResizeStart(c.key, e)}
-                          className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    {LIVE_COLS.map((c) => {
+                      const checkedSet = new Set(liveColFilters[c.key] ?? []);
+                      const uniqueVals = liveColUniqueVals[c.key] ?? [];
+                      const isFilterOpen = liveFilterOpen === c.key;
+                      const isFiltered = checkedSet.size > 0;
+                      const searchLower = liveFilterSearch.toLowerCase();
+                      const filteredVals = uniqueVals.filter((v) => v.toLowerCase().includes(searchLower));
+                      const allChecked = filteredVals.length > 0 && filteredVals.every((v) => checkedSet.has(v));
+                      return (
+                        <th
+                          key={c.key}
+                          className="px-3 py-0 whitespace-nowrap select-none relative group"
+                          style={{ width: liveColWidths[c.key] }}
                         >
-                          <span className="w-0.5 h-4 bg-emerald-400 rounded-full" />
-                        </span>
-                      </th>
-                    ))}
+                          <div className="flex items-center gap-0.5 py-2">
+                            <button
+                              onClick={() => toggleLiveSort(c.key)}
+                              className="flex items-center gap-0.5 hover:text-emerald-900 font-medium text-xs"
+                            >
+                              {c.label}
+                              {liveSortCol === c.key
+                                ? liveSortDir === 'asc'
+                                  ? <ChevronUpIcon className="w-3 h-3 text-emerald-600" />
+                                  : <ChevronDownIcon className="w-3 h-3 text-emerald-600" />
+                                : <ChevronUpIcon className="w-3 h-3 opacity-0 group-hover:opacity-30" />}
+                            </button>
+                            <button
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                if (isFilterOpen) { setLiveFilterOpen(null); setLiveFilterSearch(''); }
+                                else { setLiveFilterOpen(c.key); setLiveFilterSearch(''); }
+                              }}
+                              className={`ml-auto p-0.5 rounded hover:bg-emerald-200 transition-colors ${isFiltered ? 'text-emerald-600' : 'text-emerald-300 hover:text-emerald-500'}`}
+                              title="Filter"
+                            >
+                              <FunnelIcon className="w-3 h-3" />
+                            </button>
+                          </div>
+
+                          {/* Filter dropdown panel */}
+                          {isFilterOpen && (
+                            <div
+                              ref={liveFilterPanelRef}
+                              className="absolute z-50 top-full left-0 mt-1 w-52 bg-white border border-emerald-200 rounded-xl shadow-lg"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="p-2 border-b border-emerald-100">
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  placeholder="Search values…"
+                                  value={liveFilterSearch}
+                                  onChange={(e) => setLiveFilterSearch(e.target.value)}
+                                  onKeyDown={(e) => e.key === 'Escape' && (setLiveFilterOpen(null), setLiveFilterSearch(''))}
+                                  className="w-full text-xs border border-emerald-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                />
+                              </div>
+                              <div className="px-2 py-1 border-b border-emerald-100">
+                                <label className="flex items-center gap-2 text-xs text-gray-500 hover:text-gray-800 cursor-pointer py-0.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={allChecked}
+                                    onChange={() => {
+                                      setLiveColFilters((prev) => {
+                                        const next = new Set(prev[c.key] ?? []);
+                                        if (allChecked) filteredVals.forEach((v) => next.delete(v));
+                                        else filteredVals.forEach((v) => next.add(v));
+                                        return { ...prev, [c.key]: next };
+                                      });
+                                    }}
+                                    className="accent-emerald-500"
+                                  />
+                                  <span className="font-medium">(Select all)</span>
+                                </label>
+                              </div>
+                              <div className="max-h-52 overflow-y-auto px-2 py-1">
+                                {filteredVals.length === 0 && (
+                                  <p className="text-xs text-gray-400 py-2 text-center">No values</p>
+                                )}
+                                {filteredVals.map((val) => (
+                                  <label key={val} className="flex items-center gap-2 text-xs text-gray-700 hover:text-gray-900 cursor-pointer py-0.5">
+                                    <input
+                                      type="checkbox"
+                                      checked={checkedSet.has(val)}
+                                      onChange={() => toggleLiveFilterValue(c.key, val)}
+                                      className="accent-emerald-500"
+                                    />
+                                    <span className="truncate" title={val}>{val || '(empty)'}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              {isFiltered && (
+                                <div className="px-2 py-1.5 border-t border-emerald-100">
+                                  <button
+                                    onClick={() => { clearLiveColFilter(c.key); setLiveFilterOpen(null); setLiveFilterSearch(''); }}
+                                    className="text-xs text-red-500 hover:text-red-700 font-medium"
+                                  >
+                                    Clear filter
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <span
+                            onMouseDown={(e) => onLiveResizeStart(c.key, e)}
+                            className="absolute right-0 top-0 h-full w-2 cursor-col-resize flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <span className="w-0.5 h-4 bg-emerald-400 rounded-full" />
+                          </span>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-emerald-100">
@@ -1011,7 +1198,8 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                           <tr><td style={{ height: paddingTop }} colSpan={LIVE_COLS.length} /></tr>
                         )}
                         {vItems.map((virtualRow) => {
-                          const entry = liveEntries[virtualRow.index];
+                          const entry = visibleLiveEntries[virtualRow.index];
+                          if (!entry) return null;  // Safety check for filtered results
                           const key = liveKey(entry);
                           return (
                             <tr key={key} className="hover:bg-emerald-50/50 transition-colors">
