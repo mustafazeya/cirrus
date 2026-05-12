@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request, Query, Response, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Query, Response, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -149,11 +149,20 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f" Failed to start Log Analytics table schemas refresh: {e}")
     
+    # Event Hub consumer will start lazily when first user connects
+    # (no need to start it here - it auto-starts/stops based on active connections)
+    logger.info(" Event Hub consumer ready (lazy start on first user connection)")
+    
     yield
     
     # Shutdown
     
     try:
+        # Stop Event Hub consumer
+        from services.eventhub_firewall_service import eventhub_firewall_service
+        await eventhub_firewall_service.stop()
+        logger.info("Event Hub consumer stopped")
+        
         # Stop pub/sub listener
         await query_template_service.stop_pubsub()
         logger.info("Template pub/sub listener stopped")
@@ -4037,6 +4046,90 @@ async def fw_nl_to_kql(
     except Exception as e:
         logger.error("Firewall – NL-to-KQL failed: %s", e)
         raise HTTPException(status_code=500, detail="NL-to-KQL conversion failed")
+
+
+# ── Firewall Real-Time Log Streaming (Event Hub WebSocket) ────────────────────
+
+@app.websocket("/api/firewall/{subscription_id}/{resource_group}/{policy_name}/logs/stream")
+async def fw_logs_stream_ws(
+    websocket: WebSocket,
+    subscription_id: str,
+    resource_group: str,
+    policy_name: str,
+):
+    """
+    WebSocket endpoint for real-time firewall log streaming from Event Hub.
+    Provides 1-3 second latency (vs 1-5 minutes for Log Analytics).
+    
+    Client sends: {"filters": {...}} with same format as /logs/search
+    Server sends: {"log": {...}} for each matching log entry
+    """
+    from services.eventhub_firewall_service import eventhub_firewall_service
+    import uuid
+    
+    await websocket.accept()
+    session_id = str(uuid.uuid4())
+    filters = {}
+    
+    try:
+        # Receive initial filter configuration
+        data = await websocket.receive_json()
+        filters = data.get("filters", {})
+        logger.info(f"WebSocket {session_id}: Connected with filters: {filters}")
+        
+        # Callback to send logs to this WebSocket
+        async def send_log(log_entry: Dict[str, Any]):
+            try:
+                await websocket.send_json({"log": log_entry})
+            except WebSocketDisconnect:
+                pass  # Connection closed, stop trying to send
+            except Exception as e:
+                # Silently skip if connection is closed
+                pass
+        
+        # Register this WebSocket as a consumer
+        await eventhub_firewall_service.register_consumer(
+            session_id=session_id,
+            callback=send_log,
+            filters=filters,
+        )
+        
+        # Keep connection alive and handle filter updates
+        while True:
+            try:
+                # Use timeout to keep connection alive even if no messages
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=30.0)
+                if "filters" in data:
+                    filters = data["filters"]
+                    # Re-register with new filters
+                    await eventhub_firewall_service.register_consumer(
+                        session_id=session_id,
+                        callback=send_log,
+                        filters=filters,
+                    )
+                    logger.info(f"WebSocket {session_id}: Updated filters")
+            except asyncio.TimeoutError:
+                # Send ping to keep connection alive
+                try:
+                    await websocket.send_json({"type": "ping"})
+                except:
+                    break
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"WebSocket {session_id}: Error: {e}")
+                break
+                
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket {session_id}: Disconnected")
+    except Exception as e:
+        logger.error(f"WebSocket {session_id}: Error: {e}")
+    finally:
+        await eventhub_firewall_service.unregister_consumer(session_id)
+        try:
+            await websocket.close()
+        except:
+            pass
 
 
 # ── Firewall KQL saved templates (permanent, team-shared) ─────────────────────

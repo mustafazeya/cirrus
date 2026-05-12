@@ -242,6 +242,22 @@ function TagInput({ value, onChange, placeholder, onSubmit, operator }: {
   );
 }
 
+/** Helper to render rule field with special styling for "Default Deny" */
+function renderRuleField(value: string | undefined): React.ReactNode {
+  const val = value || '—';
+  const isDefaultDeny = val === 'Default Deny';
+  
+  if (isDefaultDeny) {
+    return (
+      <span className="text-xs italic text-gray-400" title="Traffic denied by default firewall policy (no matching rule)">
+        default deny
+      </span>
+    );
+  }
+  
+  return val;
+}
+
 export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, loading, result, workspace, groups, startTime, endTime, limit, activePreset, onWorkspaceChange, onGroupsChange, onStartTimeChange, onEndTimeChange, onLimitChange, onActivePresetChange }: Props) {
   const [showCustom, setShowCustom] = useState(false);
   const [activeTab, setActiveTab] = useState<'filter' | 'kql'>('filter');
@@ -269,34 +285,104 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
   const canSearch = workspace.trim().length > 0;
 
   // ── Live stream ────────────────────────────────────────────────────────
-  const POLL_MS      = 10_000; // poll every 10 s
-  // Lookback window per poll — must be > POLL_MS so consecutive polls always overlap.
-  // Keeping it tight (30 s = 2× poll interval) minimises the chance of hitting MAX_LIVE
-  // per poll on high-volume firewalls. 15 s of overlap absorbs any poll jitter.
-  // NOTE: for sustained traffic > MAX_LIVE entries per 30 s (~167 logs/sec) a
-  // server-side streaming endpoint (SSE/WebSocket) would be needed instead of polling.
-  const LOOKBACK_S   = 30;     // fetch last 30 s on every poll
-  const MAX_LIVE     = 5_000;  // cap live buffer
+  // Real-time streaming via WebSocket (1-3 second latency from Event Hub)
+  // Use same limit as log search results (virtualizer can handle large datasets)
 
   const [liveMode,     setLiveMode]     = useState(false);
   const [liveEntries,  setLiveEntries]  = useState<LogEntry[]>([]);
   const [liveLoading,  setLiveLoading]  = useState(false);
-  const intervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef        = useRef<WebSocket | null>(null);
   const seenKeysRef  = useRef<Set<string>>(new Set());
+  const limitRef     = useRef(limit);
+  
+  // Client-side batching to prevent excessive re-renders
+  const pendingLogsRef = useRef<LogEntry[]>([]);
+  const flushTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Virtual scrolling for live stream
+  // Note: Virtualizer uses liveEntries.length for stable scrollbar sizing
+  // Actual rendering uses visibleLiveEntries (filtered/sorted) with safety check
+  const liveScrollRef = useRef<HTMLDivElement>(null);
+  const LIVE_ROW_HEIGHT = 30;
+  const liveRowVirtualizer = useVirtualizer({
+    count: liveEntries.length,
+    getScrollElement: () => liveScrollRef.current,
+    estimateSize: () => LIVE_ROW_HEIGHT,
+    overscan: 20,
+  });
 
   const liveKey = (e: LogEntry) =>
     `${e.TimeGenerated}|${e.SourceIp}|${e.DestinationIp}|${e.DestinationPort}|${e.Rule}`;
 
-  const pollLogs = useCallback(async () => {
+  // Update limitRef when limit changes
+  useEffect(() => {
+    limitRef.current = limit;
+  }, [limit]);
+
+  // Batch flush function - processes pending logs in one React update
+  const flushPendingLogs = useCallback(() => {
+    if (pendingLogsRef.current.length === 0) return;
+    
+    const newLogs = pendingLogsRef.current;
+    pendingLogsRef.current = [];
+    
+    setLiveEntries(prev => {
+      // Combine existing logs with new logs (append new to end for chronological order)
+      const combined = [...prev, ...newLogs];
+      
+      // Sort by TimeGenerated ASCENDING (oldest first, newest last - like a terminal)
+      combined.sort((a, b) => a.TimeGenerated.localeCompare(b.TimeGenerated));
+      
+      // Remove duplicates and keep only the LAST N logs (most recent within limit)
+      const seen = new Set<string>();
+      const deduplicated: LogEntry[] = [];
+      
+      // Process from end backwards to keep newest logs when trimming to limit
+      for (let i = combined.length - 1; i >= 0 && deduplicated.length < limitRef.current; i--) {
+        const entry = combined[i];
+        const k = liveKey(entry);
+        if (!seen.has(k)) {
+          seen.add(k);
+          deduplicated.unshift(entry); // Add to front since iterating backwards
+        }
+      }
+      
+      // Update seenKeysRef
+      seenKeysRef.current = seen;
+      
+      return deduplicated;
+    });
+    
+    // Scroll to bottom to show newest logs (natural streaming flow)
+    setTimeout(() => {
+      const lastIndex = Math.max(0, liveRowVirtualizer.options.count - 1);
+      liveRowVirtualizer.scrollToIndex(lastIndex, { align: 'end' });
+    }, 0);
+  }, [liveRowVirtualizer]);
+
+  const startLive = useCallback(() => {
     if (!workspace.trim()) return;
+    
+    seenKeysRef.current.clear();
+    setLiveEntries([]);
+    setLiveMode(true);
     setLiveLoading(true);
+
+    // Build WebSocket URL
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const wsUrl = baseUrl.replace(/^http/, 'ws') + 
+      `/api/firewall/${ctx.subscription_id}/${ctx.resource_group}/${ctx.policy_name}/logs/stream`;
+
     try {
-      const now   = new Date();
-      const start = new Date(now.getTime() - LOOKBACK_S * 1000).toISOString();
-      const res   = await apiService.firewallSearchLogs(
-        ctx.subscription_id, ctx.resource_group, ctx.policy_name,
-        {
-          workspace_id: workspace.trim(),
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('[Stream] WebSocket connected');
+        setLiveLoading(false);
+        
+        // Send filter configuration
+        const filters = {
           groups: groups.map(g => ({
             conditions: g.conditions
               .filter(c => c.value.trim())
@@ -304,43 +390,104 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
             intra_connector: g.intraConnector,
             inter_connector: g.interConnector,
           })),
-          start_time: start,
-          end_time:   now.toISOString(),
-          limit: MAX_LIVE,
-        },
-      );
-      const fresh = res.entries.filter(e => {
-        const k = liveKey(e);
-        if (seenKeysRef.current.has(k)) return false;
-        seenKeysRef.current.add(k);
-        return true;
-      });
-      if (fresh.length > 0) {
-        // Sort newest-first within the batch before prepending
-        fresh.sort((a, b) => b.TimeGenerated.localeCompare(a.TimeGenerated));
-        setLiveEntries(prev => [...fresh, ...prev].slice(0, MAX_LIVE));
-      }
-    } catch { /* best-effort */ }
-    finally { setLiveLoading(false); }
-  // groups / workspace captured via closure; deps listed to satisfy linter
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace, ctx, groups]);
+        };
+        ws.send(JSON.stringify({ filters }));
+        console.log('[Stream] Filters sent:', filters);
+      };
 
-  const startLive = useCallback(() => {
-    seenKeysRef.current.clear();
-    setLiveEntries([]);
-    setLiveMode(true);
-    pollLogs();
-    intervalRef.current = setInterval(pollLogs, POLL_MS);
-  }, [pollLogs]);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          // Handle ping messages (keep-alive)
+          if (data.type === 'ping') {
+            return;
+          }
+          
+          if (data.log) {
+            const entry = data.log as LogEntry;
+            const k = liveKey(entry);
+            
+            // Deduplicate
+            if (!seenKeysRef.current.has(k)) {
+              // Add to pending buffer instead of immediate state update
+              pendingLogsRef.current.push(entry);
+              
+              // Schedule batch flush (100ms debounce for smooth rendering)
+              if (flushTimerRef.current) {
+                clearTimeout(flushTimerRef.current);
+              }
+              flushTimerRef.current = setTimeout(() => {
+                flushPendingLogs();
+                flushTimerRef.current = null;
+              }, 100);
+            }
+          }
+        } catch (err) {
+          console.error('[Stream] Failed to parse message:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('[Stream] WebSocket error:', error);
+        setLiveLoading(false);
+      };
+
+      ws.onclose = () => {
+        console.log('[Stream] WebSocket disconnected');
+        setLiveLoading(false);
+      };
+
+    } catch (err) {
+      console.error('[Stream] Failed to create WebSocket:', err);
+      setLiveLoading(false);
+      setLiveMode(false);
+    }
+  }, [workspace, ctx, groups, limit, liveRowVirtualizer]);
 
   const stopLive = useCallback(() => {
     setLiveMode(false);
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
+    
+    // Clear flush timer and do final flush
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+    flushPendingLogs();
+    
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, [flushPendingLogs]);
+
+  // Update filters when groups change (if streaming is active)
+  useEffect(() => {
+    if (liveMode && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const filters = {
+        groups: groups.map(g => ({
+          conditions: g.conditions
+            .filter(c => c.value.trim())
+            .map(c => ({ field: c.field, operator: c.operator, value: c.value })),
+          intra_connector: g.intraConnector,
+          inter_connector: g.interConnector,
+        })),
+      };flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+    }
+    if (
+      wsRef.current.send(JSON.stringify({ filters }));
+      console.log('[Stream] Filters updated:', filters);
+    }
+  }, [liveMode, groups]);
 
   // Cleanup on unmount
-  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current); }, []);
+  useEffect(() => () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+  }, []);
 
   const submit = () => {
     if (!workspace.trim()) return;
@@ -793,18 +940,18 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
       </div>
 
       {/* ── Live stream panel ─────────────────────────────────────────── */}
-      {liveMode && (
+      {(liveMode || liveEntries.length > 0) && (
         <div className="space-y-2">
           <div className="flex items-center gap-2 p-3 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Live Stream
+              <span className={`w-2 h-2 rounded-full ${liveMode ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'}`} />
+              Live Stream {!liveMode && '(Stopped)'}
             </span>
             <span className="text-xs font-normal text-emerald-600">
-              {liveEntries.length} entries accumulated · polling every 10 s (30 s lookback per poll)
+              {liveEntries.length.toLocaleString()} / {limit.toLocaleString()} entries · real-time stream (Azure batches every ~60s)
             </span>
             {liveLoading && (
-              <span className="text-xs text-emerald-500 italic">Polling…</span>
+              <span className="text-xs text-emerald-500 italic">Connecting…</span>
             )}
             <button
               onClick={() => { setLiveEntries([]); seenKeysRef.current.clear(); }}
@@ -821,7 +968,11 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
           )}
 
           {liveEntries.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-emerald-200 max-h-96 overflow-y-auto">
+            <div 
+              ref={liveScrollRef}
+              className="overflow-x-auto rounded-xl border border-emerald-200 overflow-y-auto"
+              style={{ height: '600px' }}
+            >
               <table
                 className="text-xs border-collapse"
                 style={{ tableLayout: 'fixed', width: LIVE_COLS.reduce((s, c) => s + liveColWidths[c.key], 0) }}
@@ -829,7 +980,7 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                 <colgroup>
                   {LIVE_COLS.map((c) => <col key={c.key} style={{ width: liveColWidths[c.key] }} />)}
                 </colgroup>
-                <thead className="bg-emerald-50 border-b border-emerald-200 sticky top-0">
+                <thead className="bg-emerald-50 border-b border-emerald-200 sticky top-0 z-10">
                   <tr className="text-emerald-700 text-left">
                     {LIVE_COLS.map((c) => (
                       <th
@@ -849,26 +1000,46 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-emerald-100">
-                  {liveEntries.map((entry, i) => (
-                    <tr key={i} className="hover:bg-emerald-50/50 transition-colors">
-                      <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap text-gray-500">
-                        {new Date(entry.TimeGenerated).toLocaleString('sv', { timeZone: 'UTC', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </td>
-                      <td className="px-3 py-1.5 overflow-hidden">
-                        <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[entry.Action] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {entry.Action}
-                        </span>
-                      </td>
-                      <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{entry.RuleType}</td>
-                      <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.SourceIp}>{entry.SourceIp || '—'}</td>
-                      <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.DestinationIp || entry.TargetUrl}>{entry.DestinationIp || entry.TargetUrl || '—'}</td>
-                      <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap">{entry.DestinationPort || '—'}</td>
-                      <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap">{entry.Protocol || '—'}</td>
-                      <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.Rule}>{entry.Rule || '—'}</td>
-                      <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollection}>{entry.RuleCollection || '—'}</td>
-                      <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollectionGroup}>{entry.RuleCollectionGroup || '—'}</td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    const vItems = liveRowVirtualizer.getVirtualItems();
+                    const paddingTop = vItems.length > 0 ? vItems[0].start : 0;
+                    const paddingBottom = vItems.length > 0 ? liveRowVirtualizer.getTotalSize() - vItems[vItems.length - 1].end : 0;
+                    
+                    return (
+                      <>
+                        {paddingTop > 0 && (
+                          <tr><td style={{ height: paddingTop }} colSpan={LIVE_COLS.length} /></tr>
+                        )}
+                        {vItems.map((virtualRow) => {
+                          const entry = liveEntries[virtualRow.index];
+                          const key = liveKey(entry);
+                          return (
+                            <tr key={key} className="hover:bg-emerald-50/50 transition-colors">
+                              <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap text-gray-500">
+                                {new Date(entry.TimeGenerated).toLocaleString('sv', { timeZone: 'UTC', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                              </td>
+                              <td className="px-3 py-1.5 overflow-hidden">
+                                <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${ACTION_COLORS[entry.Action] ?? 'bg-gray-100 text-gray-600'}`}>
+                                  {entry.Action}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">{entry.RuleType}</td>
+                              <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.SourceIp}>{entry.SourceIp || '—'}</td>
+                              <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.DestinationIp || entry.TargetUrl}>{entry.DestinationIp || entry.TargetUrl || '—'}</td>
+                              <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap">{entry.DestinationPort || '—'}</td>
+                              <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap">{entry.Protocol || '—'}</td>
+                              <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.Rule}>{renderRuleField(entry.Rule)}</td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollection}>{renderRuleField(entry.RuleCollection)}</td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollectionGroup}>{renderRuleField(entry.RuleCollectionGroup)}</td>
+                            </tr>
+                          );
+                        })}
+                        {paddingBottom > 0 && (
+                          <tr><td style={{ height: paddingBottom }} colSpan={LIVE_COLS.length} /></tr>
+                        )}
+                      </>
+                    );
+                  })()}
                 </tbody>
               </table>
             </div>
@@ -1082,9 +1253,9 @@ export default function LogSearch({ ctx, defaultWorkspace, onSearch, onClear, lo
                               <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap" title={entry.DestinationIp || entry.TargetUrl}>{entry.DestinationIp || entry.TargetUrl || '—'}</td>
                               <td className="px-3 py-1.5 font-mono overflow-hidden text-ellipsis whitespace-nowrap">{entry.DestinationPort || '—'}</td>
                               <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap">{entry.Protocol || '—'}</td>
-                              <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.Rule}>{entry.Rule || '—'}</td>
-                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollection}>{entry.RuleCollection || '—'}</td>
-                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollectionGroup}>{entry.RuleCollectionGroup || '—'}</td>
+                              <td className="px-3 py-1.5 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.Rule}>{renderRuleField(entry.Rule)}</td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollection}>{renderRuleField(entry.RuleCollection)}</td>
+                              <td className="px-3 py-1.5 text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap" title={entry.RuleCollectionGroup}>{renderRuleField(entry.RuleCollectionGroup)}</td>
                             </tr>
                           );
                         })}

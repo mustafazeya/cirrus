@@ -2090,9 +2090,9 @@ union isfuzzy=true
     DestinationIp       = tostring(DestinationIp),
     DestinationPort     = tostring(DestinationPort),
     Protocol            = tostring(Protocol),
-    Rule                = tostring(Rule),
-    RuleCollection      = tostring(RuleCollection),
-    RuleCollectionGroup = tostring(RuleCollectionGroup),
+    Rule                = iff(isempty(Rule) or Rule == "-" or Rule == "", "Default Deny", tostring(Rule)),
+    RuleCollection      = iff(isempty(RuleCollection) or RuleCollection == "-" or RuleCollection == "", "Default Deny", tostring(RuleCollection)),
+    RuleCollectionGroup = iff(isempty(RuleCollectionGroup) or RuleCollectionGroup == "-" or RuleCollectionGroup == "", "Default Deny", tostring(RuleCollectionGroup)),
     TargetUrl           = "",
     ThreatDescription   = ""
 | order by TimeGenerated desc
@@ -2113,9 +2113,9 @@ union isfuzzy=true
     DestinationIp       = "",
     DestinationPort     = tostring(DestinationPort),
     Protocol            = tostring(Protocol),
-    Rule                = tostring(Rule),
-    RuleCollection      = tostring(RuleCollection),
-    RuleCollectionGroup = tostring(RuleCollectionGroup),
+    Rule                = iff(isempty(Rule) or Rule == "-" or Rule == "", "Default Deny", tostring(Rule)),
+    RuleCollection      = iff(isempty(RuleCollection) or RuleCollection == "-" or RuleCollection == "", "Default Deny", tostring(RuleCollection)),
+    RuleCollectionGroup = iff(isempty(RuleCollectionGroup) or RuleCollectionGroup == "-" or RuleCollectionGroup == "", "Default Deny", tostring(RuleCollectionGroup)),
     TargetUrl           = tostring(coalesce(Fqdn, TargetUrl, "")),
     ThreatDescription   = ""
 | order by TimeGenerated desc
@@ -2136,9 +2136,9 @@ union isfuzzy=true
     DestinationIp       = tostring(DestinationIp),
     DestinationPort     = tostring(DestinationPort),
     Protocol            = tostring(Protocol),
-    Rule                = tostring(Rule),
-    RuleCollection      = tostring(RuleCollection),
-    RuleCollectionGroup = tostring(RuleCollectionGroup),
+    Rule                = iff(isempty(Rule) or Rule == "-" or Rule == "", "Default Deny", tostring(Rule)),
+    RuleCollection      = iff(isempty(RuleCollection) or RuleCollection == "-" or RuleCollection == "", "Default Deny", tostring(RuleCollection)),
+    RuleCollectionGroup = iff(isempty(RuleCollectionGroup) or RuleCollectionGroup == "-" or RuleCollectionGroup == "", "Default Deny", tostring(RuleCollectionGroup)),
     TargetUrl           = "",
     ThreatDescription   = ""
 | order by TimeGenerated desc

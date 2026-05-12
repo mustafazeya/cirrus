@@ -25,6 +25,6 @@
   "globalHeaders": {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
-    "Content-Security-Policy": "default-src 'self'; connect-src 'self' https://*.azurestaticapps.net https://*.azurecontainerapps.io https://*.flysas.tech https://*.test.flysas.tech https://login.microsoftonline.com https://graph.microsoft.com https://*.cognitiveservices.azure.com https://*.in.applicationinsights.azure.com https://*.livediagnostics.monitor.azure.com https://*.monitor.azure.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: https://graph.microsoft.com; frame-ancestors 'none';"
+    "Content-Security-Policy": "default-src 'self'; connect-src 'self' https://*.azurestaticapps.net https://*.azurecontainerapps.io https://*.flysas.tech https://*.test.flysas.tech wss://*.flysas.tech wss://*.test.flysas.tech https://login.microsoftonline.com https://graph.microsoft.com https://*.cognitiveservices.azure.com https://*.in.applicationinsights.azure.com https://*.livediagnostics.monitor.azure.com https://*.monitor.azure.com; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net; img-src 'self' data: https://graph.microsoft.com; frame-ancestors 'none';"
   }
 }

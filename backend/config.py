@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # CORS Configuration - can be comma-separated string or JSON array
     CORS_ORIGINS: str = ""  # Set via environment variable
     
+    # Event Hub Configuration (Firewall Log Streaming)
+    EVENTHUB_CONNECTION_STRING: str = ""  # Set from Key Vault
+    EVENTHUB_NAME: str = ""  # Set from Key Vault
+    EVENTHUB_CONSUMER_GROUP: str = "cirrus-backend"  # Consumer group for this backend instance
+    
     def get_cors_origins(self) -> List[str]:
         """Parse CORS origins from comma-separated string and return as list"""
         if not self.CORS_ORIGINS:
